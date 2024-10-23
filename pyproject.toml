@@ -8,6 +8,9 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.11.3"
 flask = "^3.0.3"
+flask-sqlalchemy = "^3.1.1"
+crypto = "^1.4.1"
+pycryptodome = "^3.21.0"
 
 
 [build-system]

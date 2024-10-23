@@ -1,8 +1,34 @@
 {
     "files": [
         {
-            "name":"",
-            "path":""
+            "name": "PresupuestoCreacionTiendaOnline.pdf",
+            "password": "12345678",
+            "path": "uploads/user_2_PresupuestoCreacionTiendaOnline_encrypted.pdf",
+            "user_id": 2
+        },
+        {
+            "name": "ascii-art.txt",
+            "password": "Onepiece1",
+            "path": "uploads/user_2_ascii-art_encrypted.txt",
+            "user_id": 2
+        },
+        {
+            "name": "PRACTICA_1_SIO.pdf",
+            "password": "encrypt",
+            "path": "uploads/user_2_PRACTICA_1_SIO_encrypted.pdf",
+            "user_id": 2
+        },
+        {
+            "name": "Essay2.pdf",
+            "password": "Example",
+            "path": "uploads/user_2_Essay2_encrypted.pdf",
+            "user_id": 2
+        },
+        {
+            "name": "Essay2.pdf",
+            "password": "Example",
+            "path": "uploads/user_2_Essay2_encrypted.pdf",
+            "user_id": 3
         }
     ]
 }

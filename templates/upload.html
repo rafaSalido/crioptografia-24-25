@@ -9,24 +9,83 @@
 </head>
 
 <body class="bg-gray-100">
-    <header class="bg-blue-600 text-white p-4">
+    <!-- 
+     <header class="bg-white shadow p-4">
         <div class="container mx-auto flex justify-between items-center">
-            <h1 class="text-2xl font-bold">File Upload Website</h1>
-            <div class="flex items-center">
-                <span class="mr-4">Welcome, {{ username }}!</span>
-                <a href="{{ url_for('logout') }}" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">
-                    Logout
-                </a>
+            <div>
+                <p class="text-sm text-gray-600">Pablo Cortés Rodríguez</p>
+                <p class="text-sm text-gray-600">Marwane Benmoussa</p>
+                <p class="text-sm text-gray-600">Diego Lorenzo Romero</p>
+                <p class="text-sm text-gray-600">Francisco Salido Ruiz</p>
             </div>
+            <div class="flex items-center">
+                <img src="https://placeholder.com/50x50" alt="Crypty Logo" class="w-12 h-12 mr-2">
+                <h1 class="text-2xl font-bold text-blue-600">Crypty</h1>
+            </div>
+            <button class="border border-gray-300 px-4 py-2 rounded">Logout</button>
         </div>
     </header>
 
+    <main class="container mx-auto mt-8 p-4">
+        <div class="flex flex-col md:flex-row gap-8">
+            <div class="w-full md:w-1/2">
+                <h2 class="text-2xl font-bold mb-4">Archivos y Carpetas</h2>
+                <div class="grid grid-cols-2 gap-4" id="fileList">
+                    <div class="text-center">
+                        <img src="https://placeholder.com/100x100" alt="File Icon" class="w-24 h-24 mx-auto mb-2">
+                        <p>Ejemplo1.txt</p>
+                    </div>
+                    <div class="text-center">
+                        <img src="https://placeholder.com/100x100" alt="File Icon" class="w-24 h-24 mx-auto mb-2">
+                        <p>Ejemplo2.txt</p>
+                    </div>
+                </div>
+            </div>
+            <div class="w-full md:w-1/2">
+                <h2 class="text-2xl font-bold mb-4">¿Algo que subir?</h2>
+                <div class="border-2 border-dashed border-gray-300 p-8 text-center rounded-lg mb-4" id="dropZone">
+                    <p class="text-xl mb-4">Arrastra un archivo o directorio</p>
+                    <p id="fileStatus" class="text-gray-500">Ningun archivo añadido</p>
+                </div>
+                <div class="flex justify-between">
+                    <label for="fileInput" class="bg-gray-800 text-white px-4 py-2 rounded cursor-pointer hover:bg-gray-700">
+                        Seleccionar del dispositivo
+                    </label>
+                    <button id="uploadButton" class="bg-blue-600 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-500" disabled>
+                        Subir y encriptar
+                    </button>
+                </div>
+                <input type="file" id="fileInput" class="hidden" multiple>
+            </div>
+        </div>
+    </main>
+    -->
+    <header class="bg-white shadow p-4">
+        <div class="container mx-auto flex justify-between items-center">
+            <div>
+                <p class="text-sm text-gray-600">Pablo Cortés Rodríguez</p>
+                <p class="text-sm text-gray-600">Marwane Benmoussa</p>
+                <p class="text-sm text-gray-600">Diego Lorenzo Romero</p>
+                <p class="text-sm text-gray-600">Francisco Salido Ruiz</p>
+            </div>
+            <div class="absolute left-1/2 transform -translate-x-1/2 flex items-center">
+                <div class="relative w-12 h-12 mr-2 bg-blue-600 rounded-full flex justify-center items-center">
+                    <div class="w-6 h-6 bg-white rounded-full relative left-2"></div>
+                </div>
+                <h1 class="text-2xl font-bold text-blue-600">Crypty</h1>
+            </div>
+            <a href="{{ url_for('logout') }}" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">
+                Logout
+            </a>
+        </div>
+    </header>
+<!-- 
     <section class="bg-blue-500 text-white py-20">
         <div class="container mx-auto text-center">
             <h2 class="text-4xl font-bold mb-4">Welcome to Our File Upload Service</h2>
             <p class="text-xl">Easily manage and upload your files with our intuitive interface.</p>
         </div>
-    </section>
+    </section> -->
 
     <main class="container mx-auto mt-8 p-4">
         <div class="flex flex-col md:flex-row gap-8">
@@ -62,9 +121,24 @@
         </div>
         <div class="mt-8 bg-white p-6 rounded-lg shadow">
             <h3 class="text-xl font-semibold mb-4">Encrypted Files</h3>
-            <ul id="encryptedFileList" class="space-y-2">
-                <li class="text-gray-600">Loading...</li>
-            </ul>
+            <section id="encryptedFileList" class="flex flex-wrap gap-4 justify-start">
+                {% if files|length == 0 %} 
+                    <p class="w-full text-center text-gray-600">Aún no se ha subido ningún archivo</p>
+                {% endif %}
+                {% for file in files %}
+                    <article class="flex flex-col bg-white p-4 border border-gray-300 rounded-lg shadow-md text-gray-600 max-w-md">
+                        <form method="post" action="/download" class="space-y-2 flex flex-col">
+                            <img src="https://placeholder.com/100x100" alt="File" class="w-full h-auto object-cover rounded-md">
+                            <input name="path" id="path" type="text" value="{{file.path}}" hidden>
+                            <p class="text-sm font-normal">Name: {{file.name}}</p>
+                            <input name="password" id="password" type="password" placeholder="Password" class="w-full p-2 border border-gray-300 rounded">
+                            <input type="submit" value="Download" class="bg-blue-500 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-600">
+                        </form>
+                    </article>
+                {% endfor %}
+            </section>
+            
+            
         </div>
     </main>
 
@@ -73,83 +147,82 @@
         const fileInput = document.getElementById('fileInput');
         const fileList = document.getElementById('fileList');
         const uploadControls = document.getElementById('uploadControls');
-        const encryptedFileList = document.getElementById('encryptedFileList');
+        const passwordInput = document.getElementById('passwordInput');
         let selectedFiles = [];
-
+    
         // Prevent default drag behaviors
         ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
             dropZone.addEventListener(eventName, preventDefaults, false);
             document.body.addEventListener(eventName, preventDefaults, false);
         });
-
+    
         // Highlight drop zone when item is dragged over it
         ['dragenter', 'dragover'].forEach(eventName => {
             dropZone.addEventListener(eventName, highlight, false);
         });
-
+    
         ['dragleave', 'drop'].forEach(eventName => {
             dropZone.addEventListener(eventName, unhighlight, false);
         });
-
+    
         // Handle dropped files
         dropZone.addEventListener('drop', handleDrop, false);
-
+    
         // Handle selected files
-        fileInput.addEventListener('change', handleFiles, false);
-
+        fileInput.addEventListener('change', (e) => handleFiles(e.target.files), false);
+    
         function preventDefaults(e) {
             e.preventDefault();
             e.stopPropagation();
         }
-
+    
         function highlight() {
             dropZone.classList.add('bg-blue-100');
         }
-
+    
         function unhighlight() {
             dropZone.classList.remove('bg-blue-100');
         }
-
+    
         function handleDrop(e) {
             const dt = e.dataTransfer;
-            const files = dt.files;
-            handleFiles(files);
+            handleFiles(dt.files);
         }
-
+    
         function handleFiles(files) {
             selectedFiles = Array.from(files);
-            updateFileList();
             uploadControls.style.display = 'block';
         }
-
-        function updateFileList() {
-            fileList.innerHTML = selectedFiles.map(file => `<li class="text-gray-800">${file.name}</li>`).join('');
-        }
-
+    
+    
         async function uploadFiles() {
-            const password = document.getElementById('passwordInput').value;
+            const password = passwordInput.value;
             
             if (password.length < 5) {
                 alert('Password must be at least 5 characters long');
                 return;
             }
-
+    
             if (selectedFiles.length === 0) {
                 alert('Please select a file first');
                 return;
             }
 
+            console.log("WHAAAT")
+    
             for (const file of selectedFiles) {
                 const formData = new FormData();
                 formData.append('file', file);
                 formData.append('password', password);
 
+                console.log("This yes I expect?")
+    
                 try {
                     const response = await fetch('/upload', {
                         method: 'POST',
                         body: formData
                     });
-
+    
                     if (response.ok) {
                         const result = await response.json();
                         alert(result.message);
@@ -158,84 +231,20 @@
                         alert(error.error || 'Upload failed');
                     }
                 } catch (error) {
+
+                    console.log("WHY?2")
                     alert('Error uploading file: ' + error.message);
                 }
             }
-
+    
             // Clear the form
             selectedFiles = [];
             fileInput.value = '';
-            document.getElementById('passwordInput').value = '';
-            updateFileList();
+            passwordInput.value = '';
             uploadControls.style.display = 'none';
+            location.reload()
             
-            // Refresh the encrypted file list
-            fetchEncryptedFiles();
         }
-
-        async function fetchEncryptedFiles() {
-            try {
-                const response = await fetch('/files');
-                const files = await response.json();
-                encryptedFileList.innerHTML = '';
-
-                 // Check if no files are returned
-                if (files.length === 0) {
-                    encryptedFileList.innerHTML = '<li class="text-gray-600">No files saved yet.</li>';
-                    return;  // Exit function since there are no files
-                }
-                files.forEach(file => {
-                    const li = document.createElement('li');
-                    li.className = 'flex justify-between items-center p-2 bg-gray-50 rounded';
-                    li.innerHTML = `
-                        <span>${file.original_name}</span>
-                        <button onclick="downloadFile('${file.encrypted_name}')" class="bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600">
-                            Download
-                        </button>
-                    `;
-                    encryptedFileList.appendChild(li);
-                });
-               
-            } catch (error) {
-                console.error('Error fetching encrypted files:', error);
-                encryptedFileList.innerHTML = '<li class="text-red-600">Error loading encrypted files.</li>';
-            }
-        }
-
-        async function downloadFile(filename) {
-            const password = prompt('Enter the password to decrypt the file:');
-            if (!password) return;
-
-            try {
-                const response = await fetch(`/download/${filename}`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ password }),
-                });
-
-                if (response.ok) {
-                    const blob = await response.blob();
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.style.display = 'none';
-                    a.href = url;
-                    a.download = filename.replace('_encrypted', '_decrypted');
-                    document.body.appendChild(a);
-                    a.click();
-                    window.URL.revokeObjectURL(url);
-                } else {
-                    const error = await response.json();
-                    alert(error.error || 'Download failed');
-                }
-            } catch (error) {
-                alert('Error downloading file: ' + error.message);
-            }
-        }
-
-        // Fetch encrypted files on page load
-        fetchEncryptedFiles();
     </script>
 </body>
 
