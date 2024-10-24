@@ -66,7 +66,7 @@
                 <p class="text-sm text-gray-600">Pablo Cortés Rodríguez</p>
                 <p class="text-sm text-gray-600">Marwane Benmoussa</p>
                 <p class="text-sm text-gray-600">Diego Lorenzo Romero</p>
-                <p class="text-sm text-gray-600">Francisco Salido Ruiz</p>
+                <p class="text-sm text-gray-600">Rafael Salido Ruiz</p>
             </div>
             <div class="absolute left-1/2 transform -translate-x-1/2 flex items-center">
                 <div class="relative w-12 h-12 mr-2 bg-blue-600 rounded-full flex justify-center items-center">
@@ -192,6 +192,19 @@
         function handleFiles(files) {
             selectedFiles = Array.from(files);
             uploadControls.style.display = 'block';
+
+            // Limpiar la lista actual de archivos
+            fileList.innerHTML = '';
+
+            // Agregar los nombres de los archivos seleccionados
+            if (selectedFiles.length > 0) {
+                selectedFiles.forEach(file => {
+                    const li = document.createElement('li');
+                    li.className = 'text-gray-600';
+                    li.textContent = file.name;  // Aquí agregas el nombre del archivo
+                    fileList.appendChild(li);
+                });
+            }
         }
     
     

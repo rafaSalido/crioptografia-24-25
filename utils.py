@@ -18,7 +18,7 @@ def get_user_files(json_record_path):
         if file["user_id"] == user_id:
             user_files.append(file)
 
-    return files
+    return user_files
 
 
 

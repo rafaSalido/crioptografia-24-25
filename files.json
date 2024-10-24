@@ -29,6 +29,18 @@
             "password": "Example",
             "path": "uploads/user_2_Essay2_encrypted.pdf",
             "user_id": 3
+        },
+        {
+            "name": "archivoPrueba.txt",
+            "password": "password",
+            "path": "uploads/user_3_archivoPrueba_encrypted.txt",
+            "user_id": 3
+        },
+        {
+            "name": "Practica_2_Crypty.pdf",
+            "password": "practica2",
+            "path": "uploads/user_3_Practica_2_Crypty_encrypted.pdf",
+            "user_id": 3
         }
     ]
 }
