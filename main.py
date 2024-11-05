@@ -1,35 +1,38 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, send_file
 import json
+import os
+from werkzeug.utils import secure_filename
+from werkzeug.security import generate_password_hash, check_password_hash
+from dotenv import load_dotenv
 
 from utils import allowed_file, get_user_files, load_json, save_json
 from models import db, User
-from encriptar import encrypt_file, decrypt_file, is_strong_password
-from werkzeug.utils import secure_filename
-import os
+from encriptar import encrypt_file, decrypt_file, is_strong_password, MasterCipher
 
+# Cargar variables de entorno
+load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key'  # Change this to a strong secret key in production
+app.secret_key = os.getenv('FLASK_SECRET_KEY')
 
-# Database configuration
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
+# Configuración de la base de datos
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URI')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+app.config['UPLOAD_FOLDER'] = os.getenv('UPLOAD_FOLDER')
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # Tamaño máximo de archivo: 16MB
 
-
-# Ensure uploads folder exists
+# Crear carpeta de subidas si no existe
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-
 
 JSON_FILE_PATH = 'files.json'
 
-
-
-# Initialize the database
+# Inicializar la base de datos
 with app.app_context():
     db.init_app(app)
     db.create_all()
+
+# Instancia de cifrado para datos sensibles
+cipher = MasterCipher()
 
 @app.route('/')
 def home():
@@ -37,9 +40,7 @@ def home():
         return redirect(url_for('upload_page'))
     return redirect(url_for('login'))
 
-
-
-""" AUTHENTICATION """
+""" AUTENTICACIÓN """
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -49,7 +50,7 @@ def login():
         
         user = User.query.filter_by(username=username).first()
         
-        if user and user.password == password:  # In production, use proper password hashing
+        if user and check_password_hash(user.password, password):
             session['username'] = username
             session['user_id'] = user.id
             flash('Logged in successfully!', 'success')
@@ -68,7 +69,8 @@ def signup():
             flash('Username already exists', 'error')
             return render_template('signup.html')
 
-        new_user = User(username=username, password=password)  # In production, hash the password
+        hashed_password = generate_password_hash(password)
+        new_user = User(username=username, password=hashed_password)
         try:
             db.session.add(new_user)
             db.session.commit()
@@ -79,16 +81,14 @@ def signup():
             flash(f'Registration failed: {str(e)}', 'error')
     return render_template('signup.html')
 
-
 @app.route('/logout')
 def logout():
     session.clear()
     flash('You have been logged out.', 'info')
     return redirect(url_for('login'))
 
+""" APLICACIÓN DE ENCRIPTACIÓN """
 
-
-""" ENCRYPTION APP """
 @app.get('/upload')
 def upload_page():
     if 'username' not in session:
@@ -98,7 +98,6 @@ def upload_page():
     user_files = get_user_files(JSON_FILE_PATH)
     return render_template('upload.html', files=user_files, username=session['username'])
 
-
 @app.post('/upload')
 def upload_file():
     if 'username' not in session:
@@ -107,12 +106,11 @@ def upload_file():
     if 'file' not in request.files:
         return jsonify({'error': 'No file part in the request'}), 400
     
-    # Obtain request variables
+    # Obtener variables del formulario
     file = request.files['file']
     password = request.form.get('password')
     user_id = session.get('user_id')
     
-    #
     if not file or file.filename == '':
         return jsonify({'error': 'No file selected'}), 400
     
@@ -125,9 +123,9 @@ def upload_file():
     if not allowed_file(file.filename):
         return jsonify({'error': 'Invalid file type'}), 400
 
-    # Encrypt information
+    # Proceso de encriptación del archivo
     try:
-        # Extract and save file
+        # Guardar archivo temporalmente y encriptarlo
         filename = secure_filename(file.filename)
         user_filename = f"user_{user_id}_{filename}"
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], user_filename)
@@ -138,22 +136,22 @@ def upload_file():
         if not os.path.exists(file_path):
             return jsonify({'error': f'File not saved properly: {file_path}'}), 500
             
-        # Encrypt the file uploaded
+        # Encriptar el archivo con la contraseña del cliente
         encrypted_file_path = encrypt_file(file_path, password)
         if encrypted_file_path is None:
             raise Exception('Encryption failed')
             
         app.logger.info(f"File encrypted. New path: {encrypted_file_path}")
             
-        # Delete the original file once is encrypted
+        # Borrar el archivo original
         os.remove(file_path)
-        app.logger.info(f"Original file removed: {file_path}")
 
-        # Save and link to the respective user the file uploaded
+        # Guardar la información del archivo en JSON
+        encrypted_password = cipher.encrypt(password)  # Encriptar la contraseña del archivo
         files_data = load_json(JSON_FILE_PATH)
         files_data['files'].append({
             "name": filename,
-            "password": password,
+            "password": encrypted_password,
             "path": encrypted_file_path,
             "user_id": user_id
          })
@@ -172,8 +170,6 @@ def upload_file():
 def download_file():
     if 'username' not in session:
         return jsonify({'error': 'Not authenticated'}), 401
-    
-    print("Form: ", request.form.get('path'), " ", request.form.get('password'))
 
     path = request.form.get('path')
     password = request.form.get('password')
@@ -183,15 +179,14 @@ def download_file():
         return jsonify({'error': 'Missing required information'}), 400
     
     if not os.path.exists(path):
-        print("Filepath: ", path)
         return jsonify({'error': 'File not found'}), 404
 
     temp_decrypted = None
     try:
-        # Attempt to decrypt the file
+        # Intentar desencriptar el archivo con la contraseña proporcionada
         temp_decrypted = decrypt_file(path, password)
 
-        # Return the decrypted file as an attachment
+        # Enviar el archivo desencriptado al cliente
         return send_file(
             temp_decrypted,
             as_attachment=True,
@@ -199,17 +194,12 @@ def download_file():
         )
     
     except Exception as e:
-        # Handle decryption errors
         return jsonify({'error': f'Decryption failed: {str(e)}'}), 400
     
     finally:
-        # Ensure the temporary file is always cleaned up after the request is handled
+        # Asegurar la limpieza del archivo temporal
         if temp_decrypted and os.path.exists(temp_decrypted):
             os.remove(temp_decrypted)
-
-
-
-
 
 if __name__ == '__main__':
     app.run(debug=True)

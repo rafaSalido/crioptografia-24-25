@@ -1,46 +1,10 @@
 {
     "files": [
         {
-            "name": "PresupuestoCreacionTiendaOnline.pdf",
-            "password": "12345678",
-            "path": "uploads/user_2_PresupuestoCreacionTiendaOnline_encrypted.pdf",
-            "user_id": 2
-        },
-        {
-            "name": "ascii-art.txt",
-            "password": "Onepiece1",
-            "path": "uploads/user_2_ascii-art_encrypted.txt",
-            "user_id": 2
-        },
-        {
-            "name": "PRACTICA_1_SIO.pdf",
-            "password": "encrypt",
-            "path": "uploads/user_2_PRACTICA_1_SIO_encrypted.pdf",
-            "user_id": 2
-        },
-        {
-            "name": "Essay2.pdf",
-            "password": "Example",
-            "path": "uploads/user_2_Essay2_encrypted.pdf",
-            "user_id": 2
-        },
-        {
-            "name": "Essay2.pdf",
-            "password": "Example",
-            "path": "uploads/user_2_Essay2_encrypted.pdf",
-            "user_id": 3
-        },
-        {
-            "name": "archivoPrueba.txt",
-            "password": "password",
-            "path": "uploads/user_3_archivoPrueba_encrypted.txt",
-            "user_id": 3
-        },
-        {
-            "name": "Practica_2_Crypty.pdf",
-            "password": "practica2",
-            "path": "uploads/user_3_Practica_2_Crypty_encrypted.pdf",
-            "user_id": 3
+            "name": "ejemplo_de_pdf_de_cripto.pdf",
+            "password": "NONNNHefyymhTlvy/Jvq5J/KgmNTY4L0WngBiS7wqw6IJjczjX1TERDuH7p5nwlqeb0udSc=",
+            "path": "uploads/user_1_ejemplo_de_pdf_de_cripto_encrypted.pdf",
+            "user_id": 1
         }
     ]
 }
