@@ -71,9 +71,9 @@
                     <article class="flex flex-col bg-white p-4 border border-gray-300 rounded-lg shadow-md text-gray-600 max-w-md">
                         <form method="post" action="/download" class="space-y-2 flex flex-col">
                             <img src="https://placeholder.com/100x100" alt="File" class="w-full h-auto object-cover rounded-md">
-                            <input name="path" id="path" type="text" value="{{file.path}}" hidden>
-                            <p class="text-sm font-normal">Name: {{file.name}}</p>
-                            <input name="password" id="password" type="password" placeholder="Password" autocomplete="off" class="w-full p-2 border border-gray-300 rounded">
+                            <input name="path" id="path" type="text" value="{{ file.path }}" hidden>
+                            <p class="text-sm font-normal">Name: {{ file.name }}</p>
+                            <!-- Eliminar el campo de contraseña ya que no se requiere para la descarga -->
                             <input type="submit" value="Download" class="bg-blue-500 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-600">
                         </form>
                     </article>

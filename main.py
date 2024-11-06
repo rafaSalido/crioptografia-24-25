@@ -7,7 +7,8 @@ from dotenv import load_dotenv
 
 from utils import allowed_file, get_user_files, load_json, save_json
 from models import db, User
-from encriptar import encrypt_file, decrypt_file, is_strong_password, MasterCipher
+from encriptar import encrypt_file, decrypt_file, is_strong_password, derive_aes_key, encrypt_aes_key_with_rsa, decrypt_aes_key_with_rsa
+from Crypto.PublicKey import RSA
 
 # Cargar variables de entorno
 load_dotenv()
@@ -30,9 +31,6 @@ JSON_FILE_PATH = 'files.json'
 with app.app_context():
     db.init_app(app)
     db.create_all()
-
-# Instancia de cifrado para datos sensibles
-cipher = MasterCipher()
 
 @app.route('/')
 def home():
@@ -70,7 +68,14 @@ def signup():
             return render_template('signup.html')
 
         hashed_password = generate_password_hash(password)
-        new_user = User(username=username, password=hashed_password)
+
+        # Generar el par de claves RSA
+        rsa_key = RSA.generate(2048)
+        private_key = rsa_key.export_key()
+        public_key = rsa_key.publickey().export_key()
+
+        new_user = User(username=username, password=hashed_password, 
+                        public_key=public_key, private_key=private_key)
         try:
             db.session.add(new_user)
             db.session.commit()
@@ -103,19 +108,12 @@ def upload_file():
     if 'username' not in session:
         return jsonify({'error': 'Not authenticated'}), 401
 
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file part in the request'}), 400
-    
-    # Obtener variables del formulario
     file = request.files['file']
     password = request.form.get('password')
     user_id = session.get('user_id')
     
-    if not file or file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
-    
-    if not password:
-        return jsonify({'error': 'Password is required'}), 400
+    if not file or not password:
+        return jsonify({'error': 'File and password are required'}), 400
 
     if not is_strong_password(password):
         return jsonify({'error': 'Password must be at least 5 characters long'}), 400
@@ -123,35 +121,30 @@ def upload_file():
     if not allowed_file(file.filename):
         return jsonify({'error': 'Invalid file type'}), 400
 
-    # Proceso de encriptación del archivo
     try:
-        # Guardar archivo temporalmente y encriptarlo
         filename = secure_filename(file.filename)
         user_filename = f"user_{user_id}_{filename}"
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], user_filename)
         file.save(file_path)
-            
-        app.logger.info(f"File saved to: {file_path}")
-        
-        if not os.path.exists(file_path):
-            return jsonify({'error': f'File not saved properly: {file_path}'}), 500
-            
-        # Encriptar el archivo con la contraseña del cliente
-        encrypted_file_path = encrypt_file(file_path, password)
-        if encrypted_file_path is None:
-            raise Exception('Encryption failed')
-            
-        app.logger.info(f"File encrypted. New path: {encrypted_file_path}")
-            
-        # Borrar el archivo original
-        os.remove(file_path)
 
-        # Guardar la información del archivo en JSON
-        encrypted_password = cipher.encrypt(password)  # Encriptar la contraseña del archivo
+        # Derivar la clave AES a partir de la contraseña del archivo
+        aes_key = derive_aes_key(password)
+
+        # Obtener la clave pública del usuario desde la base de datos
+        user = User.query.get(user_id)
+        
+        # Encriptar la clave AES con RSA
+        encrypted_aes_key = encrypt_aes_key_with_rsa(aes_key, user.public_key)
+
+        # Encriptar el archivo
+        encrypted_file_path = encrypt_file(file_path, aes_key)
+        os.remove(file_path)  # Eliminar el archivo original después de encriptarlo
+
+        # Guardar información en JSON
         files_data = load_json(JSON_FILE_PATH)
         files_data['files'].append({
             "name": filename,
-            "password": encrypted_password,
+            "encrypted_aes_key": encrypted_aes_key,
             "path": encrypted_file_path,
             "user_id": user_id
          })
@@ -163,7 +156,6 @@ def upload_file():
             })
 
     except Exception as e:
-        app.logger.error(f"Error in file upload: {str(e)}")
         return jsonify({'error': str(e)}), 500
     
 @app.post('/download')
@@ -172,10 +164,9 @@ def download_file():
         return jsonify({'error': 'Not authenticated'}), 401
 
     path = request.form.get('path')
-    password = request.form.get('password')
     user_id = session.get('user_id')
 
-    if not all([path, password, user_id]):
+    if not all([path, user_id]):
         return jsonify({'error': 'Missing required information'}), 400
     
     if not os.path.exists(path):
@@ -183,10 +174,16 @@ def download_file():
 
     temp_decrypted = None
     try:
-        # Intentar desencriptar el archivo con la contraseña proporcionada
-        temp_decrypted = decrypt_file(path, password)
+        files_data = load_json(JSON_FILE_PATH)
+        file_info = next(f for f in files_data['files'] if f['path'] == path and f['user_id'] == user_id)
+        
+        # Desencriptar la clave AES con la clave privada RSA del usuario
+        user = User.query.get(user_id)
+        aes_key = decrypt_aes_key_with_rsa(file_info['encrypted_aes_key'], user.private_key)
 
-        # Enviar el archivo desencriptado al cliente
+        # Desencriptar el archivo con la clave AES obtenida
+        temp_decrypted = decrypt_file(path, aes_key)
+
         return send_file(
             temp_decrypted,
             as_attachment=True,
@@ -197,7 +194,6 @@ def download_file():
         return jsonify({'error': f'Decryption failed: {str(e)}'}), 400
     
     finally:
-        # Asegurar la limpieza del archivo temporal
         if temp_decrypted and os.path.exists(temp_decrypted):
             os.remove(temp_decrypted)
 
