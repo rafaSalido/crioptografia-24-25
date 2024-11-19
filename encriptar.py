@@ -1,13 +1,14 @@
 import os
 import logging
-from typing import Optional, Tuple, Union
-from Crypto.Cipher import AES, PKCS1_OAEP
+from typing import Optional, Tuple
+from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
 from Crypto.Protocol.KDF import scrypt
 from Crypto.Util import Padding
-from Crypto.PublicKey import RSA
+from Crypto.Util.Padding import pad, unpad
 from base64 import b64encode, b64decode
 from dotenv import load_dotenv
+from kyber_py.src.kyber_py.kyber import Kyber512  # Importar Kyber512 correctamente
 
 # Cargar variables de entorno y configurar logging
 load_dotenv()
@@ -26,33 +27,25 @@ SCRYPT_N = 2**14
 SCRYPT_R = 8
 SCRYPT_P = 1
 
-### Derivación de clave AES desde la contraseña (solo en la subida) ###
+### Encriptación y Desencriptación de Claves AES usando Kyber512 ###
 
-def derive_aes_key(password: str) -> bytes:
-    """ Deriva una clave AES a partir de una contraseña utilizando scrypt. Genera un salt único en cada llamada. """
-    salt = get_random_bytes(SALT_LENGTH)
-    key = scrypt(password.encode('utf-8'), salt, KEY_LENGTH, N=SCRYPT_N, r=SCRYPT_R, p=SCRYPT_P)
-    return key
+def encrypt_aes_key_with_kyber(aes_key: bytes, public_key_hex: str) -> str:
+    kyber = Kyber512
+    public_key = bytes.fromhex(public_key_hex)
+    _, ciphertext = kyber.encaps(public_key)
+    return b64encode(ciphertext).decode('utf-8')
 
-### Encriptación y Desencriptación de Claves AES usando RSA ###
+def decrypt_aes_key_with_kyber(ciphertext_b64: str, private_key_hex: str) -> bytes:
+    """
+    Decapsula el ciphertext para recuperar la clave AES utilizando la clave privada Kyber512.
+    """
+    kyber = Kyber512
+    private_key = bytes.fromhex(private_key_hex)
+    ciphertext = b64decode(ciphertext_b64)
 
-def encrypt_aes_key_with_rsa(aes_key: bytes, public_key: bytes) -> str:
-    """
-    Encripta la clave AES con la clave pública RSA del usuario.
-    """
-    rsa_key = RSA.import_key(public_key)
-    rsa_cipher = PKCS1_OAEP.new(rsa_key)
-    encrypted_key = rsa_cipher.encrypt(aes_key)
-    return b64encode(encrypted_key).decode('utf-8')
-
-def decrypt_aes_key_with_rsa(encrypted_aes_key: str, private_key: bytes) -> bytes:
-    """
-    Desencripta la clave AES encriptada usando la clave privada RSA del usuario.
-    """
-    rsa_key = RSA.import_key(private_key)
-    rsa_cipher = PKCS1_OAEP.new(rsa_key)
-    decrypted_key = rsa_cipher.decrypt(b64decode(encrypted_aes_key))
-    return decrypted_key
+    # Recuperar la clave compartida
+    shared_key = kyber.decaps(private_key, ciphertext)
+    return shared_key
 
 ### SECCIÓN 1: Encriptación de Archivos del Usuario ###
 
@@ -113,7 +106,7 @@ def decrypt_file(encrypted_file_path: str, aes_key: bytes) -> Optional[str]:
     logger.debug(f"File decrypted successfully: {decrypted_file_path}")
     return decrypted_file_path
 
-### SECCIÓN 2: Encriptación de Datos sensibles del Backend ###
+### SECCIÓN 2: Encriptación de Datos Sensibles del Backend ###
 
 class MasterCipher:
     def __init__(self, key: bytes = MASTER_KEY):
@@ -138,9 +131,6 @@ class MasterCipher:
         cipher = AES.new(key, AES.MODE_EAX, nonce=nonce)
         return cipher.decrypt_and_verify(ciphertext, tag).decode('utf-8')
 
-def is_strong_password(password: str) -> bool:
-    return isinstance(password, str) and len(password) >= MIN_PASSWORD_LENGTH
-
 ### SECCIÓN 3: Asignación de nombres encriptados/desencriptados ###
 
 def get_encrypted_filename(file_path: str) -> str:
@@ -152,3 +142,24 @@ def get_decrypted_filename(file_path: str) -> str:
         return file_path.replace("_encrypted", "_decrypted")
     base, ext = os.path.splitext(file_path)
     return f"{base}_decrypted{ext}"
+
+
+### SECCIÓN 4: Encriptado/Desencriptado de clave privada de usuario ###
+
+def encrypt_with_master_key(data: bytes, master_key: bytes) -> str:
+    """
+    Cifra los datos con la clave maestra utilizando AES en modo CBC.
+    """
+    cipher = AES.new(master_key, AES.MODE_CBC)
+    ciphertext = cipher.encrypt(pad(data, AES.block_size))
+    return b64encode(cipher.iv + ciphertext).decode('utf-8')
+
+def decrypt_with_master_key(encrypted_data: str, master_key: bytes) -> bytes:
+    """
+    Descifra los datos cifrados con la clave maestra utilizando AES en modo CBC.
+    """
+    encrypted_data = b64decode(encrypted_data)
+    iv, ciphertext = encrypted_data[:16], encrypted_data[16:]
+    cipher = AES.new(master_key, AES.MODE_CBC, iv)
+    return unpad(cipher.decrypt(ciphertext), AES.block_size)
+

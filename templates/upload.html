@@ -36,15 +36,12 @@
                 <ul class="space-y-2" id="fileList">
                     <li class="text-gray-600">No files selected yet.</li>
                 </ul>
-                <div class="mt-4 space-y-4" id="uploadControls" style="display: none;">
-                    <input type="password" id="passwordInput" autocomplete="off"
-                           class="w-full p-2 border rounded" 
-                           placeholder="Enter password (minimum 5 characters)">
+                <div class="mt-4 space-y-4" id="uploadControls">
                     <button onclick="uploadFiles()" 
                             class="w-full bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
                         Encrypt and Upload
                     </button>
-                </div>
+                </div>                
             </div>
             <div class="w-full md:w-1/2 bg-white p-6 rounded-lg shadow">
                 <h3 class="text-xl font-semibold mb-4">Upload Files</h3>
@@ -70,10 +67,8 @@
                 {% for file in files %}
                     <article class="flex flex-col bg-white p-4 border border-gray-300 rounded-lg shadow-md text-gray-600 max-w-md">
                         <form method="post" action="/download" class="space-y-2 flex flex-col">
-                            <img src="https://placeholder.com/100x100" alt="File" class="w-full h-auto object-cover rounded-md">
                             <input name="path" id="path" type="text" value="{{ file.path }}" hidden>
                             <p class="text-sm font-normal">Name: {{ file.name }}</p>
-                            <!-- Eliminar el campo de contraseña ya que no se requiere para la descarga -->
                             <input type="submit" value="Download" class="bg-blue-500 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-600">
                         </form>
                     </article>
@@ -87,7 +82,7 @@
         const fileInput = document.getElementById('fileInput');
         const fileList = document.getElementById('fileList');
         const uploadControls = document.getElementById('uploadControls');
-        const passwordInput = document.getElementById('passwordInput');
+        
         let selectedFiles = [];
     
         // Prevent default drag behaviors
@@ -148,29 +143,21 @@
         }
     
         async function uploadFiles() {
-            const password = passwordInput.value;
-            
-            if (password.length < 5) {
-                alert('Password must be at least 5 characters long');
-                return;
-            }
-    
             if (selectedFiles.length === 0) {
                 alert('Please select a file first');
                 return;
             }
-    
+
             for (const file of selectedFiles) {
                 const formData = new FormData();
                 formData.append('file', file);
-                formData.append('password', password);
-    
+
                 try {
                     const response = await fetch('/upload', {
                         method: 'POST',
                         body: formData
                     });
-    
+
                     if (response.ok) {
                         const result = await response.json();
                         alert(result.message);
@@ -182,13 +169,13 @@
                     alert('Error uploading file: ' + error.message);
                 }
             }
-    
+
             selectedFiles = [];
             fileInput.value = '';
-            passwordInput.value = '';
             uploadControls.style.display = 'none';
             location.reload();
         }
+
     </script>
 </body>
 
