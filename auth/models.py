@@ -9,3 +9,4 @@ class User(db.Model):
     password = db.Column(db.String(150), nullable=False)
     public_key_kyber = db.Column(db.Text, nullable=False)  # Clave pública Kyber512
     private_key_kyber = db.Column(db.Text, nullable=False)  # Clave privada Kyber512
+    certificate_dilithium = db.Column(db.Text, nullable=False)  # Dilithium certificate

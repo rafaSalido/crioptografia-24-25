@@ -42,7 +42,7 @@ with app.app_context():
 def home():
     if 'username' in session:
         return redirect(url_for('upload_page'))
-    return redirect(url_for('login'))
+    return redirect(url_for('auth.login'))
 
 
 """ AUTENTICACIÓN """
@@ -56,7 +56,7 @@ app.register_blueprint(auth_blueprint, url_prefix='/auth')
 def upload_page():
     if 'username' not in session:
         flash('Please log in to access this page.', 'error')
-        return redirect(url_for('login'))
+        return redirect(url_for('auth.login'))
 
     user_files = get_user_files(JSON_FILE_PATH)
     return render_template('upload.html', files=user_files, username=session['username'])

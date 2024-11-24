@@ -2,12 +2,15 @@ from flask import Blueprint, request, session, flash, redirect, url_for, render_
 from werkzeug.security import generate_password_hash, check_password_hash
 from .models import User
 from .models import db
+from .certificate import generate_certificate
 from kyber.kyber import Kyber512
 from encrypt import encrypt_with_master_key, MASTER_KEY
 
 auth_blueprint = Blueprint('auth', __name__)
 
 kyber = Kyber512
+
+ENTITY_PUBLIC_KEY = "Some value - I don't know which one"
 
 @auth_blueprint.route('/login', methods=['GET', 'POST'])
 def login():
@@ -44,13 +47,15 @@ def signup():
 
         # Cifrar la clave privada con ENCRYPTION_KEY
         encrypted_private_key = encrypt_with_master_key(private_key, MASTER_KEY)
+        certificate = generate_certificate(username, public_key.hex(), ENTITY_PUBLIC_KEY)
 
         # Crear el nuevo usuario
         new_user = User(
             username=username,
             password=hashed_password,
             public_key_kyber=public_key.hex(),
-            private_key_kyber=encrypted_private_key
+            private_key_kyber=encrypted_private_key,
+            certificate_dilithium=certificate
         )
         try:
             db.session.add(new_user)
