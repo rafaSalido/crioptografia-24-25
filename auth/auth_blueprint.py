@@ -2,10 +2,12 @@ from flask import Blueprint, request, session, flash, redirect, url_for, render_
 from werkzeug.security import generate_password_hash, check_password_hash
 from .models import User
 from .models import db
-from kyber_py.src.kyber_py.kyber import kyber
+from kyber.kyber import Kyber512
 from encrypt import encrypt_with_master_key, MASTER_KEY
 
 auth_blueprint = Blueprint('auth', __name__)
+
+kyber = Kyber512
 
 @auth_blueprint.route('/login', methods=['GET', 'POST'])
 def login():
@@ -59,6 +61,7 @@ def signup():
             db.session.rollback()
             flash(f'Registration failed: {str(e)}', 'error')
     return render_template('signup.html')
+
 
 
 @auth_blueprint.route('/logout')

@@ -8,7 +8,7 @@ from Crypto.Util import Padding
 from Crypto.Util.Padding import pad, unpad
 from base64 import b64encode, b64decode
 from dotenv import load_dotenv
-from kyber_py.src.kyber_py.kyber import Kyber512  # Importar Kyber512 correctamente
+from kyber.kyber import Kyber512  # Importar Kyber512 correctamente
 
 # Cargar variables de entorno y configurar logging
 load_dotenv()

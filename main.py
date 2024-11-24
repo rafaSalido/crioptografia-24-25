@@ -11,7 +11,7 @@ from utils import allowed_file, get_user_files, load_json, save_json
 from db import db
 from auth.models import User
 from encrypt import encrypt_file, decrypt_file, encrypt_with_master_key, decrypt_with_master_key
-from kyber_py.src.kyber_py.kyber import Kyber512
+from kyber.kyber import Kyber512
 
 # Cargar variables de entorno
 load_dotenv()
