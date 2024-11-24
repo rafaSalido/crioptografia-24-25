@@ -25,7 +25,7 @@
     <main class="container mx-auto mt-8 p-4">
         <div class="max-w-md mx-auto bg-white p-8 rounded-lg shadow">
             <h3 class="text-2xl font-semibold mb-6">Login</h3>
-            <form action="{{ url_for('login') }}" method="POST">
+            <form action="{{ url_for('auth.login') }}" method="POST">
                 <div class="mb-4">
                     <label for="username" class="block text-gray-700 text-sm font-bold mb-2">Username</label>
                     <input type="text" id="username" name="username" required
@@ -41,7 +41,7 @@
                         class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
                         Sign In
                     </button>
-                    <a href="{{ url_for('signup') }}" class="inline-block align-baseline font-bold text-sm text-blue-500 hover:text-blue-800">
+                    <a href="{{ url_for('auth.signup') }}" class="inline-block align-baseline font-bold text-sm text-blue-500 hover:text-blue-800">
                         SignUp
                     </a>
                 </div>

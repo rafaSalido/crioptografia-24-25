@@ -6,9 +6,11 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 from Crypto.Random import get_random_bytes
 
+from auth import auth_blueprint
 from utils import allowed_file, get_user_files, load_json, save_json
-from models import db, User
-from encriptar import encrypt_file, decrypt_file, encrypt_with_master_key, decrypt_with_master_key
+from db import db
+from auth.models import User
+from encrypt import encrypt_file, decrypt_file, encrypt_with_master_key, decrypt_with_master_key
 from kyber_py.src.kyber_py.kyber import Kyber512
 
 # Cargar variables de entorno
@@ -45,67 +47,7 @@ def home():
 
 """ AUTENTICACIÓN """
 
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-
-        user = User.query.filter_by(username=username).first()
-
-        if user and check_password_hash(user.password, password):
-            session['username'] = username
-            session['user_id'] = user.id
-            flash('Logged in successfully!', 'success')
-            return redirect(url_for('upload_page'))
-        else:
-            flash('Invalid credentials', 'error')
-    return render_template('login.html')
-
-
-@app.route('/signup', methods=['GET', 'POST'])
-def signup():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-
-        if User.query.filter_by(username=username).first():
-            flash('Username already exists', 'error')
-            return render_template('signup.html')
-
-        hashed_password = generate_password_hash(password)
-
-        # Generar el par de claves Kyber512
-        public_key, private_key = kyber.keygen()
-
-        # Cifrar la clave privada con ENCRYPTION_KEY
-        encrypted_private_key = encrypt_with_master_key(private_key, MASTER_KEY)
-
-        # Crear el nuevo usuario
-        new_user = User(
-            username=username,
-            password=hashed_password,
-            public_key_kyber=public_key.hex(),
-            private_key_kyber=encrypted_private_key
-        )
-        try:
-            db.session.add(new_user)
-            db.session.commit()
-            flash('Registration successful! Please login.', 'success')
-            return redirect(url_for('login'))
-        except Exception as e:
-            db.session.rollback()
-            flash(f'Registration failed: {str(e)}', 'error')
-    return render_template('signup.html')
-
-
-@app.route('/logout')
-def logout():
-    session.clear()
-    flash('You have been logged out.', 'info')
-    return redirect(url_for('login'))
-
+app.register_blueprint(auth_blueprint, url_prefix='/auth')
 
 """ APLICACIÓN DE ENCRIPTACIÓN """
 

@@ -1,7 +1,7 @@
 import os
 import json
 import shutil
-from models import db, User
+from auth.models import db, User
 from main import app  # Importa la instancia de Flask desde tu archivo principal
 
 def reset_data():

@@ -2,7 +2,7 @@ from flask import session
 import json
 import os
 import logging
-from encriptar import MasterCipher  # Importar clase de encriptación
+from encrypt import MasterCipher  # Importar clase de encriptación
 
 # Configurar logger
 logging.basicConfig(level=logging.DEBUG)
