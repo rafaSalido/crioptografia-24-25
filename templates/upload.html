@@ -69,6 +69,8 @@
                         <form method="post" action="/download" class="space-y-2 flex flex-col">
                             <input name="path" id="path" type="text" value="{{ file.path }}" hidden>
                             <p class="text-sm font-normal">Name: {{ file.name }}</p>
+                            <label for="password_{{ loop.index }}" class="text-sm font-normal">Enter your password to download:</label>
+                            <input type="password" name="password" id="password_{{ loop.index }}" class="border border-gray-300 p-2 rounded" required>
                             <input type="submit" value="Download" class="bg-blue-500 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-600">
                         </form>
                     </article>
