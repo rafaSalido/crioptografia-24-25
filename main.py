@@ -2,13 +2,14 @@ from base64 import b64decode
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, send_file
 import os
 from werkzeug.utils import secure_filename
+from werkzeug.security import generate_password_hash
 from dotenv import load_dotenv
 from Crypto.Cipher import AES
 import logging
 from auth import auth_blueprint
 from utils import allowed_file, get_user_files, load_json, save_json
 from db import db
-from auth.models import Community, User
+from auth.models import Community, CommunityUser, User
 from encrypt import encrypt_file, decrypt_file
 from kyber.kyber import Kyber512
 from auth.certificate import validate_certificate, KEY_LENGTH, SALT_LENGTH, SCRYPT_N, SCRYPT_P, SCRYPT_R
@@ -70,6 +71,12 @@ def home():
     return redirect(url_for('upload_page' if 'username' in session else 'auth.login'))
 
 
+
+
+'''
+    COMMUNITY FEATURE URLS
+'''
+
 # Página de comunidades
 @app.get('/communities')
 def communities_page():
@@ -77,17 +84,56 @@ def communities_page():
         flash('Please log in to access this page.', 'error')  # Mensaje de error si no está autenticado
         return redirect(url_for('auth.login'))  # Redirigir al login
     
-    communities = []
+    # Get all communities from user session using Community and UserCommunityClasses
+    user_communities = Community.query.join(CommunityUser).filter(CommunityUser.user_id == session['user_id']).all()
+    communities = Community.query.all()
 
-    for i in range(10):
-        community = Community(
-            id=i,
-            name=f"Community {i}",
-            password="Test"
-        )
-        communities.append(community)
+    return render_template('communities.html', user_communities=user_communities, communities=communities, username=session['username'])
 
-    return render_template('communities.html', communities=communities, username=session['username'])
+
+
+# Página de comunidades
+@app.post('/create-community')
+def create_community():
+    """Create a community based on the information provided by the user form
+    
+    Return: a redirect to the page of the community created
+    """
+
+    if 'username' not in session:
+        flash('Please log in to access this page.', 'error')
+
+    name = request.form.get('name')
+    password = request.form.get('password')
+
+    if not name or not password:
+        flash('Please fill all the fields', 'error')
+        return redirect(url_for('communities_page'))
+    
+    encrypted_password = generate_password_hash(password)
+
+    '''
+        # Generate Certificate if needed
+    '''
+    
+    community = Community(
+        name=name,
+        password=encrypted_password
+    )
+
+    db.session.add(community)
+    db.session.commit()
+    community_user = CommunityUser(
+        user_id=session['user_id'],
+        community_id=community.id
+    )
+
+    db.session.add(community_user)
+    db.session.commit()
+
+    return redirect(url_for('community_page', community_id=community.id))    
+
+    
 
 
 # Página de comunidad
@@ -97,14 +143,14 @@ def community_page(community_id):
         flash('Please log in to access this page.', 'error')  # Mensaje de error si no está autenticado
         return redirect(url_for('auth.login'))  # Redirigir al login
     
-    community = Community(
-        id=0,
-        name="Test",
-        password="Test"
-    )
+    community = Community.query.get(community_id)
     return render_template('community.html', community = community, username=session['username'])
 
 
+
+'''
+    UPLOAD FEATURE URLS
+'''
 
 # Página de subida de archivos
 @app.get('/upload')
