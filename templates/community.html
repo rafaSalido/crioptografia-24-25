@@ -1,0 +1,158 @@
+{% extends 'app_base.html' %}
+
+{% block content %}
+<h2 class="mb-10 text-2xl text-center">Community <b>{{community.name}}</b></h2>
+<div>
+    <section class="mt-8 bg-white p-6 rounded-lg shadow mb-10">
+        <h3 class="text-xl font-semibold mb-4 text-center">Community Encrypted Files</h3>
+        <section id="encryptedFileList" class="flex flex-wrap gap-4 justify-start">
+            {% if files|length == 0 %}
+            <p class="w-full text-center text-gray-600">Aún no se ha subido ningún archivo</p>
+            {% endif %}
+            {% for file in files %}
+            <article class="flex flex-col bg-white p-4 border border-gray-300 rounded-lg shadow-md text-gray-600 max-w-md">
+                <form method="post" action="/download" class="space-y-2 flex flex-col">
+                    <input name="path" id="path" type="text" value="{{ file.path }}" hidden>
+                    <p class="text-sm font-normal">Name: {{ file.name }}</p>
+                    <label for="password_{{ loop.index }}" class="text-sm font-normal">Enter your password to
+                        download:</label>
+                    <input type="password" name="password" id="password_{{ loop.index }}"
+                        class="border border-gray-300 p-2 rounded" required>
+                    <input type="submit" value="Download"
+                        class="bg-blue-500 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-600">
+                </form>
+            </article>
+            {% endfor %}
+        </section>
+    </section>
+    <section class="flex flex-col md:flex-row gap-8">
+        <div class="w-full md:w-1/2 bg-white p-6 rounded-lg shadow">
+            <h3 class="text-xl font-semibold mb-4">Files to Upload</h3>
+            <ul class="space-y-2" id="fileList">
+                <li class="text-gray-600">No files selected yet.</li>
+            </ul>
+            <div class="mt-4 space-y-4" id="uploadControls">
+                <button onclick="uploadFiles()" class="w-full bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
+                    Encrypt and Upload
+                </button>
+            </div>
+        </div>
+        <div class="w-full md:w-1/2 bg-white p-6 rounded-lg shadow">
+            <h3 class="text-xl font-semibold mb-4">Upload Files</h3>
+            <div class="border-dashed border-2 border-gray-300 p-8 text-center rounded-lg mb-4" id="dropZone">
+                <p>Drag and drop files here</p>
+                <p class="text-sm text-gray-500 mt-2">or</p>
+            </div>
+            <div class="text-center">
+                <label for="fileInput" class="bg-blue-500 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-600">
+                    Select Files
+                </label>
+                <input type="file" id="fileInput" class="hidden">
+            </div>
+        </div>
+    </section>
+</div>
+
+<script>
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const fileList = document.getElementById('fileList');
+    const uploadControls = document.getElementById('uploadControls');
+
+    let selectedFiles = [];
+
+    // Prevent default drag behaviors
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, preventDefaults, false);
+        document.body.addEventListener(eventName, preventDefaults, false);
+    });
+
+    // Highlight drop zone when item is dragged over it
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, highlight, false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, unhighlight, false);
+    });
+
+    // Handle dropped files
+    dropZone.addEventListener('drop', handleDrop, false);
+
+    // Handle selected files
+    fileInput.addEventListener('change', (e) => handleFiles(e.target.files), false);
+
+    function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+
+    function highlight() {
+        dropZone.classList.add('bg-blue-100');
+    }
+
+    function unhighlight() {
+        dropZone.classList.remove('bg-blue-100');
+    }
+
+    function handleDrop(e) {
+        const dt = e.dataTransfer;
+        handleFiles(dt.files);
+    }
+
+    function handleFiles(files) {
+        selectedFiles = Array.from(files);
+        uploadControls.style.display = 'block';
+
+        // Limpiar la lista actual de archivos
+        fileList.innerHTML = '';
+
+        // Agregar los nombres de los archivos seleccionados
+        if (selectedFiles.length > 0) {
+            selectedFiles.forEach(file => {
+                const li = document.createElement('li');
+                li.className = 'text-gray-600';
+                li.textContent = file.name;
+                fileList.appendChild(li);
+            });
+        }
+    }
+
+    async function uploadFiles() {
+        if (selectedFiles.length === 0) {
+            alert('Please select a file first');
+            return;
+        }
+
+        for (const file of selectedFiles) {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    alert(result.message);
+                } else {
+                    const error = await response.json();
+                    alert(error.error || 'Upload failed');
+                }
+            } catch (error) {
+                alert('Error uploading file: ' + error.message);
+            }
+        }
+
+        selectedFiles = [];
+        fileInput.value = '';
+        uploadControls.style.display = 'none';
+        location.reload();
+    }
+
+</script>
+
+
+{% endblock %}

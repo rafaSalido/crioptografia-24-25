@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.tailwindcss.com"></script>
+    {% block head %}
+        <title>File Upload Website</title>
+    {% endblock %}
+</head>
+
+<body class="bg-gray-100">
+    <header class="bg-white shadow p-4">
+        <div class="container mx-auto flex justify-between items-center">
+            <div>
+                <p class="text-sm text-gray-600">Pablo Cortés Rodríguez</p>
+                <p class="text-sm text-gray-600">Marwane Benmoussa</p>
+                <p class="text-sm text-gray-600">Diego Lorenzo Romero</p>
+                <p class="text-sm text-gray-600">Rafael Salido Ruiz</p>
+            </div>
+            <div class="absolute left-1/2 transform -translate-x-1/2 flex items-center">
+                <div class="relative w-12 h-12 mr-2 bg-blue-600 rounded-full flex justify-center items-center">
+                    <div class="w-6 h-6 bg-white rounded-full relative left-2"></div>
+                </div>
+                <h1 class="text-2xl font-bold text-blue-600">Crypty</h1>
+            </div>
+            <div>
+                <a href="{{ url_for('upload_page') }}" class="text-blue font-bold py-2 px-4 rounded">
+                    Dashboard
+                </a>
+                <a href="{{ url_for('communities_page') }}" class="text-blue font-bold py-2 px-4 rounded">
+                    Communities
+                </a>
+                <a href="{{ url_for('auth.logout') }}" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">
+                    Logout
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto mt-8 p-4">
+        {% block content %}{% endblock %}
+    </main>
+
+</body>
+
+</html>

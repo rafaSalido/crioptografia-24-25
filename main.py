@@ -8,7 +8,7 @@ import logging
 from auth import auth_blueprint
 from utils import allowed_file, get_user_files, load_json, save_json
 from db import db
-from auth.models import User
+from auth.models import Community, User
 from encrypt import encrypt_file, decrypt_file
 from kyber.kyber import Kyber512
 from auth.certificate import validate_certificate, KEY_LENGTH, SALT_LENGTH, SCRYPT_N, SCRYPT_P, SCRYPT_R
@@ -68,6 +68,43 @@ def validate_user_certificate(user):
 @app.route('/')
 def home():
     return redirect(url_for('upload_page' if 'username' in session else 'auth.login'))
+
+
+# Página de comunidades
+@app.get('/communities')
+def communities_page():
+    if 'username' not in session:
+        flash('Please log in to access this page.', 'error')  # Mensaje de error si no está autenticado
+        return redirect(url_for('auth.login'))  # Redirigir al login
+    
+    communities = []
+
+    for i in range(10):
+        community = Community(
+            id=i,
+            name=f"Community {i}",
+            password="Test"
+        )
+        communities.append(community)
+
+    return render_template('communities.html', communities=communities, username=session['username'])
+
+
+# Página de comunidad
+@app.get('/community/<int:community_id>')
+def community_page(community_id):
+    if 'username' not in session:
+        flash('Please log in to access this page.', 'error')  # Mensaje de error si no está autenticado
+        return redirect(url_for('auth.login'))  # Redirigir al login
+    
+    community = Community(
+        id=0,
+        name="Test",
+        password="Test"
+    )
+    return render_template('community.html', community = community, username=session['username'])
+
+
 
 # Página de subida de archivos
 @app.get('/upload')
