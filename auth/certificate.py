@@ -18,11 +18,13 @@ logger = logging.getLogger(__name__)
 CERTIFICATES_FOLDER = "certificates"
 KEYS_FOLDER = os.path.join(CERTIFICATES_FOLDER, "keys")
 USERS_FOLDER = os.path.join(CERTIFICATES_FOLDER, "users")
+COMM_FOLDER = os.path.join(CERTIFICATES_FOLDER, "communities")
 
 # Crear carpetas necesarias
 os.makedirs(CERTIFICATES_FOLDER, exist_ok=True)
 os.makedirs(KEYS_FOLDER, exist_ok=True)
 os.makedirs(USERS_FOLDER, exist_ok=True)
+os.makedirs(COMM_FOLDER, exist_ok=True)
 
 # Cargar número de licencia para proteger la clave privada de la aplicación
 LICENSE_KEY = os.getenv("LICENSE_KEY").encode("utf-8")
@@ -64,74 +66,111 @@ if not os.path.exists(ENCRYPTED_PRIVATE_KEY_PATH) or not os.path.exists(APP_PUBL
     encrypted_private_key = iv + cipher.encrypt(padded_private_key)
 
     # Guardar la clave privada cifrada
-    with open(ENCRYPTED_PRIVATE_KEY_PATH, 'wb') as key_file:
-        key_file.write(encrypted_private_key)
+    try:
+        with open(ENCRYPTED_PRIVATE_KEY_PATH, 'wb') as key_file:
+            key_file.write(encrypted_private_key)
+        logger.info("Clave privada de la aplicación cifrada y guardada con éxito.")
+    except IOError as e:
+        logger.error(f"Error al guardar la clave privada cifrada: {e}")
+        raise
 
     # Guardar la clave pública
-    with open(APP_PUBLIC_KEY_PATH, "w") as pub_key_file:
-        pub_key_file.write(APP_PUBLIC_KEY.hex())
+    try:
+        with open(APP_PUBLIC_KEY_PATH, "w") as pub_key_file:
+            pub_key_file.write(APP_PUBLIC_KEY.hex())
+        logger.info("Clave pública de la aplicación guardada con éxito.")
+    except IOError as e:
+        logger.error(f"Error al guardar la clave pública: {e}")
+        raise
 else:
     # Cargar la clave pública
-    with open(APP_PUBLIC_KEY_PATH, "r") as pub_key_file:
-        APP_PUBLIC_KEY = bytes.fromhex(pub_key_file.read())
+    try:
+        with open(APP_PUBLIC_KEY_PATH, "r") as pub_key_file:
+            APP_PUBLIC_KEY = bytes.fromhex(pub_key_file.read())
+        logger.info("Clave pública de la aplicación cargada correctamente.")
+    except IOError as e:
+        logger.error(f"Error al cargar la clave pública: {e}")
+        raise
 
     # Cargar y descifrar la clave privada de la aplicación
-    with open(ENCRYPTED_PRIVATE_KEY_PATH, "rb") as key_file:
-        encrypted_private_key = key_file.read()
+    try:
+        with open(ENCRYPTED_PRIVATE_KEY_PATH, "rb") as key_file:
+            encrypted_private_key = key_file.read()
 
-    # Derivar la clave de cifrado desde LICENSE_KEY
-    derived_key = derive_key_from_license(LICENSE_KEY)
+        # Derivar la clave de cifrado desde LICENSE_KEY
+        derived_key = derive_key_from_license(LICENSE_KEY)
 
-    # Extraer IV y descifrar la clave privada
-    iv = encrypted_private_key[:16]
-    ciphertext = encrypted_private_key[16:]
-    cipher = AES.new(derived_key, AES.MODE_CBC, iv)
-    APP_PRIVATE_KEY = unpad(cipher.decrypt(ciphertext), AES.block_size)
+        # Extraer IV y descifrar la clave privada
+        iv = encrypted_private_key[:16]
+        ciphertext = encrypted_private_key[16:]
+        cipher = AES.new(derived_key, AES.MODE_CBC, iv)
+        APP_PRIVATE_KEY = unpad(cipher.decrypt(ciphertext), AES.block_size)
+        logger.info("Clave privada de la aplicación descifrada correctamente.")
+    except Exception as e:
+        logger.error(f"Error al descifrar la clave privada: {e}")
+        raise
 
 # Funciones para certificados de usuarios
-def generate_certificate(username: str, kyber_public_key: bytes) -> str:
+def generate_certificate(identifier: str, kyber_public_key: bytes, is_community=False) -> str:
     """
-    Genera un certificado básico para un usuario, lo firma y lo guarda en disco.
+    Genera un certificado básico para un usuario o comunidad, lo firma y lo guarda en disco.
     """
     kyber_public_key = bytes.fromhex(kyber_public_key) if isinstance(kyber_public_key, str) else kyber_public_key
 
     # Crear el contenido del certificado
-    user_certificate = {
-        "username": username,
+    certificate = {
+        "identifier": identifier,
         "kyber_public_key": kyber_public_key.hex()
     }
 
     # Firmar el certificado con la clave privada de la aplicación
-    certificate_data = json.dumps(user_certificate).encode()
+    certificate_data = json.dumps(certificate).encode()
     try:
-        user_certificate["signature"] = Dilithium2.sign(APP_PRIVATE_KEY, certificate_data).hex()
+        certificate["signature"] = Dilithium2.sign(APP_PRIVATE_KEY, certificate_data).hex()
+        logger.info(f"Certificado firmado para {identifier}.")
     except Exception as e:
         logger.error(f"Error al firmar el certificado: {e}")
         raise RuntimeError(f"Error al firmar el certificado: {e}")
 
-    # Guardar el certificado en la carpeta de usuarios
-    certificate_path = os.path.join(USERS_FOLDER, f"{username}_certificate.json")
+    # Guardar el certificado en la carpeta correspondiente
+    folder = COMM_FOLDER if is_community else USERS_FOLDER
+    extension = "json"
+    certificate_path = os.path.join(folder, f"{identifier}_certificate.{extension}")
+
     try:
         with open(certificate_path, 'w') as cert_file:
-            json.dump(user_certificate, cert_file, indent=4)
-        logger.info(f"Certificado generado para el usuario: {username}")
+            json.dump(certificate, cert_file, indent=4)
+        logger.info(f"Certificado generado y guardado para: {identifier}")
     except Exception as e:
         logger.error(f"Error al guardar el certificado: {e}")
         raise IOError(f"Error al guardar el certificado: {e}")
 
     return certificate_path
 
-def validate_certificate(username: str) -> bool:
+def validate_certificate(identifier: str, is_community: bool = False) -> bool:
     """
-    Valida un certificado de usuario contra la clave pública de la aplicación.
+    Valida un certificado contra la clave pública de la aplicación.
+    
+    :param identifier: Nombre del usuario o comunidad.
+    :param is_community: Booleano que indica si el certificado es para una comunidad.
+    :return: True si el certificado es válido, False en caso contrario.
     """
-    certificate_path = os.path.join(USERS_FOLDER, f"{username}_certificate.json")
+    folder = COMM_FOLDER if is_community else USERS_FOLDER
+    extension = "json"
+    certificate_path = os.path.join(folder, f"{identifier}_certificate.{extension}")
+
     if not os.path.exists(certificate_path):
-        raise FileNotFoundError(f"Certificado para {username} no encontrado.")
+        logger.error(f"Certificado para {identifier} no encontrado.")
+        return False
 
     # Cargar el certificado
-    with open(certificate_path, 'r') as cert_file:
-        certificate = json.load(cert_file)
+    try:
+        with open(certificate_path, 'r') as cert_file:
+            certificate = json.load(cert_file)
+        logger.info(f"Certificado cargado correctamente para {identifier}.")
+    except IOError as e:
+        logger.error(f"Error al cargar el certificado para {identifier}: {e}")
+        return False
 
     # Extraer y verificar la firma
     try:
@@ -142,10 +181,10 @@ def validate_certificate(username: str) -> bool:
         # Verificar la firma con la clave pública de la aplicación
         is_valid = Dilithium2.verify(APP_PUBLIC_KEY, certificate_data, signature)
         if is_valid:
-            logger.info(f"El certificado del usuario {username} es válido.")
+            logger.info(f"El certificado para {identifier} es válido.")
         else:
-            logger.warning(f"El certificado del usuario {username} no es válido.")
+            logger.warning(f"El certificado para {identifier} no es válido.")
         return is_valid
     except Exception as e:
         logger.error(f"Error al validar el certificado: {e}")
-        raise ValueError(f"Error al validar el certificado: {e}")
+        return False

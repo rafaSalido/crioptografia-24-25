@@ -1,25 +1,22 @@
 {% extends 'app_base.html' %}
 
 {% block content %}
-<h2 class="mb-10 text-2xl text-center">Community <b>{{community.name}}</b></h2>
+<h2 class="mb-10 text-2xl text-center">Community <b>{{ community.name }}</b></h2>
 <div>
     <section class="mt-8 bg-white p-6 rounded-lg shadow mb-10">
         <h3 class="text-xl font-semibold mb-4 text-center">Community Encrypted Files</h3>
         <section id="encryptedFileList" class="flex flex-wrap gap-4 justify-start">
             {% if files|length == 0 %}
-            <p class="w-full text-center text-gray-600">Aún no se ha subido ningún archivo</p>
+            <p class="w-full text-center text-gray-600">No files have been uploaded yet.</p>
             {% endif %}
             {% for file in files %}
             <article class="flex flex-col bg-white p-4 border border-gray-300 rounded-lg shadow-md text-gray-600 max-w-md">
                 <form method="post" action="/download" class="space-y-2 flex flex-col">
-                    <input name="path" id="path" type="text" value="{{ file.path }}" hidden>
+                    <!-- Asegurarse de usar el campo correcto para la ruta del archivo -->
+                    <input name="path" id="path_{{ loop.index }}" type="hidden" value="{{ file.path }}">
                     <p class="text-sm font-normal">Name: {{ file.name }}</p>
-                    <label for="password_{{ loop.index }}" class="text-sm font-normal">Enter your password to
-                        download:</label>
-                    <input type="password" name="password" id="password_{{ loop.index }}"
-                        class="border border-gray-300 p-2 rounded" required>
-                    <input type="submit" value="Download"
-                        class="bg-blue-500 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-600">
+                
+                    <input type="submit" value="Download" class="bg-blue-500 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-600">
                 </form>
             </article>
             {% endfor %}
@@ -129,7 +126,8 @@
             formData.append('file', file);
 
             try {
-                const response = await fetch('/upload', {
+                // Cambiar la URL para apuntar a /upload-to-community
+                const response = await fetch(`/upload-to-community/{{ community.id }}`, {
                     method: 'POST',
                     body: formData
                 });
@@ -149,10 +147,8 @@
         selectedFiles = [];
         fileInput.value = '';
         uploadControls.style.display = 'none';
-        location.reload();
+        location.reload();  // Recargar la página para mostrar el nuevo archivo en la lista
     }
-
 </script>
-
 
 {% endblock %}

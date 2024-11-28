@@ -9,9 +9,13 @@ from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
 import os
 from base64 import b64encode, b64decode
+import logging
+
+# Configuración de logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 auth_blueprint = Blueprint('auth', __name__)
-
 kyber = Kyber512
 
 # Parámetros de Scrypt para derivación de clave
@@ -45,10 +49,12 @@ def signup():
         username = request.form['username']
         password = request.form['password']
 
+        # Validar si el usuario ya existe
         if User.query.filter_by(username=username).first():
             flash('Username already exists', 'error')
             return render_template('signup.html')
 
+        # Verificar si MASTER_KEY está configurado
         if not MASTER_KEY:
             flash('Error interno: MASTER_KEY no configurado.', 'error')
             return render_template('signup.html')
@@ -75,6 +81,7 @@ def signup():
         try:
             certificate = generate_certificate(username, public_key.hex())
         except Exception as e:
+            logger.error(f"Error al generar el certificado para el usuario {username}: {e}")
             flash(f"Error al generar el certificado: {str(e)}", 'error')
             return render_template('signup.html')
 
@@ -86,13 +93,17 @@ def signup():
             private_key_kyber=b64encode(encrypted_private_key).decode('utf-8'),
             certificate_dilithium=certificate
         )
+
+        # Guardar el usuario en la base de datos
         try:
             db.session.add(new_user)
             db.session.commit()
+            logger.info(f"Usuario registrado correctamente: {username}")
             flash('Registration successful! Please login.', 'success')
             return redirect(url_for('auth.login'))
         except Exception as e:
             db.session.rollback()
+            logger.error(f'Error al registrar el usuario {username}: {e}')
             flash(f'Error al registrar el usuario: {str(e)}', 'error')
             return render_template('signup.html')
     return render_template('signup.html')

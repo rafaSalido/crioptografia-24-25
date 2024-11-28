@@ -1,4 +1,5 @@
 from base64 import b64decode
+import json
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, send_file
 import os
 from werkzeug.utils import secure_filename
@@ -9,12 +10,13 @@ import logging
 from auth import auth_blueprint
 from utils import allowed_file, get_user_files, load_json, save_json
 from db import db
-from auth.models import Community, CommunityUser, User
-from encrypt import encrypt_file, decrypt_file
+from auth.models import Community, CommunityFiles, CommunityUser, User
+from encrypt import decrypt_aes_key_with_kyber, encrypt_aes_key_with_kyber, encrypt_file, decrypt_file, encrypt_with_master_key, decrypt_with_master_key
 from kyber.kyber import Kyber512
-from auth.certificate import validate_certificate, KEY_LENGTH, SALT_LENGTH, SCRYPT_N, SCRYPT_P, SCRYPT_R
+from auth.certificate import APP_PUBLIC_KEY, generate_certificate, validate_certificate, KEY_LENGTH, SALT_LENGTH, SCRYPT_N, SCRYPT_P, SCRYPT_R
 from Crypto.Protocol.KDF import scrypt
 from Crypto.Util.Padding import unpad
+from Crypto.Random import get_random_bytes
 
 # Configurar logging
 logging.basicConfig(level=logging.DEBUG)
@@ -58,20 +60,10 @@ def get_authenticated_user():
         return None, jsonify({'error': 'User not found'}), 404  # Error si el usuario no está en la base de datos
     return user, None, None
 
-# Validar el certificado del usuario para garantizar su autenticidad
-def validate_user_certificate(user):
-    if not validate_certificate(user.username):
-        logger.warning(f"Certificado no válido para el usuario {user.username}")
-        return jsonify({'error': 'Invalid certificate'}), 400  # Error si el certificado no es válido
-    return None
-
 # Ruta principal que redirige según la autenticación
 @app.route('/')
 def home():
-    return redirect(url_for('upload_page' if 'username' in session else 'auth.login'))
-
-
-
+    return redirect(url_for('upload_page') if 'username' in session else url_for('auth.login'))
 
 '''
     COMMUNITY FEATURE URLS
@@ -83,25 +75,22 @@ def communities_page():
     if 'username' not in session:
         flash('Please log in to access this page.', 'error')  # Mensaje de error si no está autenticado
         return redirect(url_for('auth.login'))  # Redirigir al login
-    
-    # Get all communities from user session using Community and UserCommunityClasses
+
     user_communities = Community.query.join(CommunityUser).filter(CommunityUser.user_id == session['user_id']).all()
-    communities = Community.query.all()
+    user_communities_ids = [community.id for community in user_communities]
 
-    return render_template('communities.html', user_communities=user_communities, communities=communities, username=session['username'])
+    # Filtrar las comunidades que no pertenecen al usuario
+    other_communities = Community.query.filter(~Community.id.in_(user_communities_ids)).all()
+
+    return render_template('communities.html', user_communities=user_communities, other_communities=other_communities, username=session['username'])
 
 
-
-# Página de comunidades
+# Crear una comunidad
 @app.post('/create-community')
 def create_community():
-    """Create a community based on the information provided by the user form
-    
-    Return: a redirect to the page of the community created
-    """
-
     if 'username' not in session:
         flash('Please log in to access this page.', 'error')
+        return redirect(url_for('auth.login'))
 
     name = request.form.get('name')
     password = request.form.get('password')
@@ -112,41 +101,168 @@ def create_community():
     
     encrypted_password = generate_password_hash(password)
 
-    '''
-        # Generate Certificate if needed
-    '''
-    
-    community = Community(
-        name=name,
-        password=encrypted_password
-    )
+    # Generar un certificado para la comunidad
+    try:
+        certificate_path = generate_certificate(name, APP_PUBLIC_KEY.hex(), is_community=True)
+    except Exception as e:
+        flash(f"Error al generar el certificado para la comunidad: {str(e)}", 'error')
+        return redirect(url_for('communities_page'))
 
-    db.session.add(community)
-    db.session.commit()
-    community_user = CommunityUser(
-        user_id=session['user_id'],
-        community_id=community.id
-    )
+    # Crear la nueva comunidad y almacenar la ruta del certificado
+    try:
+        community = Community(
+            name=name,
+            password=encrypted_password,
+            certificate_path=certificate_path  # Guardar la ruta del certificado en lugar del contenido
+        )
+        db.session.add(community)
+        db.session.commit()
 
-    db.session.add(community_user)
-    db.session.commit()
+        # Asociar el usuario creador a la comunidad
+        community_user = CommunityUser(
+            user_id=session['user_id'],
+            community_id=community.id
+        )
+        db.session.add(community_user)
+        db.session.commit()
 
-    return redirect(url_for('community_page', community_id=community.id))    
+        return redirect(url_for('community_page', community_id=community.id))
+    except Exception as e:
+        db.session.rollback()  # Revertir cambios en caso de error
+        flash(f"Error al crear la comunidad: {str(e)}", 'error')
+        return redirect(url_for('communities_page'))
 
-    
+@app.post('/join-community/<int:community_id>')
+def join_community(community_id):
+    if 'username' not in session:
+        flash('Please log in to join a community.', 'error')
+        return redirect(url_for('auth.login'))
 
+    user, err_response, status = get_authenticated_user()
+    if err_response:
+        return err_response, status
 
-# Página de comunidad
+    community = Community.query.get(community_id)
+    if not community:
+        flash('Community not found.', 'error')
+        return redirect(url_for('communities_page'))
+
+    existing_membership = CommunityUser.query.filter_by(user_id=user.id, community_id=community_id).first()
+    if existing_membership:
+        flash('You are already a member of this community.', 'info')
+        return redirect(url_for('community_page', community_id=community_id))
+
+    try:
+        new_membership = CommunityUser(user_id=user.id, community_id=community_id)
+        db.session.add(new_membership)
+        db.session.commit()
+
+        # Actualizar los archivos existentes para incluir al nuevo miembro
+        json_filename = f"community_{community_id}_files.json"
+        community_files_data = load_json(json_filename)
+
+        for file_info in community_files_data.get("files", []):
+            encrypted_keys = file_info.get("encrypted_aes_keys", {})
+            if str(user.id) not in encrypted_keys:
+                public_key = bytes.fromhex(user.public_key_kyber)
+                aes_key = b64decode(encrypted_keys[next(iter(encrypted_keys))])
+                encrypted_key_for_new_member = encrypt_aes_key_with_kyber(aes_key, public_key.hex())
+                encrypted_keys[str(user.id)] = encrypted_key_for_new_member
+                file_info["encrypted_aes_keys"] = encrypted_keys
+
+        save_json(community_files_data, json_filename)
+
+        flash('You have successfully joined the community and have been given access to all community files.', 'success')
+        return redirect(url_for('community_page', community_id=community_id))
+
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error adding user to community: {str(e)}")
+        flash('An error occurred while trying to join the community.', 'error')
+        return redirect(url_for('communities_page'))
+
+# Página de comunidad con sus archivos
 @app.get('/community/<int:community_id>')
 def community_page(community_id):
     if 'username' not in session:
-        flash('Please log in to access this page.', 'error')  # Mensaje de error si no está autenticado
-        return redirect(url_for('auth.login'))  # Redirigir al login
-    
+        flash('Please log in to access this page.', 'error')
+        return redirect(url_for('auth.login'))
+
     community = Community.query.get(community_id)
-    return render_template('community.html', community = community, username=session['username'])
+    if not community:
+        flash('Community not found', 'error')
+        return redirect(url_for('communities_page'))
 
+    json_filename = f"community_{community_id}_files.json"
+    community_files_data = load_json(json_filename)
+    community_files = community_files_data.get("files", [])
 
+    return render_template('community.html', community=community, files=community_files, username=session['username'])
+
+# Subir archivo a una comunidad
+@app.post('/upload-to-community/<int:community_id>')
+def upload_to_community(community_id):
+    if 'username' not in session:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    file = request.files.get('file')
+    if not file or not allowed_file(file.filename):
+        return jsonify({'error': 'Invalid file or type'}), 400
+
+    user, err_response, status = get_authenticated_user()
+    if err_response:
+        return err_response, status
+
+    community_user = CommunityUser.query.filter_by(user_id=user.id, community_id=community_id).first()
+    if not community_user:
+        return jsonify({'error': 'Not a member of this community'}), 403
+
+    community = Community.query.get(community_id)
+    if not community or not community.certificate_path:
+        return jsonify({'error': 'Community certificate not found'}), 404
+
+    try:
+        if not validate_certificate(community.name, is_community=True):
+            logger.warning(f"Certificado de la comunidad {community.name} no es válido.")
+            return jsonify({'error': 'Invalid community certificate'}), 400
+    except Exception as e:
+        logger.error(f"Error al validar el certificado de la comunidad: {str(e)}")
+        return jsonify({'error': 'Community certificate validation failed'}), 500
+
+    try:
+        filename = secure_filename(file.filename)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], f"community_{community_id}_{filename}")
+        file.save(file_path)
+
+        aes_key = get_random_bytes(KEY_LENGTH)
+        encrypted_file_path = encrypt_file(file_path, aes_key)
+        os.remove(file_path)
+
+        encrypted_keys = {}
+        members = CommunityUser.query.filter_by(community_id=community_id).all()
+        for member in members:
+            member_user = User.query.get(member.user_id)
+            public_key = bytes.fromhex(member_user.public_key_kyber)
+            encrypted_key = encrypt_aes_key_with_kyber(aes_key, public_key.hex())
+            encrypted_keys[str(member.user_id)] = encrypted_key
+
+        json_filename = f"community_{community_id}_files.json"
+        community_files_data = load_json(json_filename)
+
+        community_files_data.setdefault("files", []).append({
+            "name": filename,
+            "path": encrypted_file_path,
+            "encrypted_aes_keys": encrypted_keys
+        })
+
+        save_json(community_files_data, json_filename)
+
+        logger.info(f"Archivo {filename} encriptado y guardado correctamente para la comunidad {community_id}")
+        return jsonify({'message': 'File encrypted and saved successfully', 'filename': os.path.basename(encrypted_file_path)})
+
+    except Exception as e:
+        logger.error(f"Error al encriptar el archivo: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 '''
     UPLOAD FEATURE URLS
@@ -156,44 +272,40 @@ def community_page(community_id):
 @app.get('/upload')
 def upload_page():
     if 'username' not in session:
-        flash('Please log in to access this page.', 'error')  # Mensaje de error si no está autenticado
-        return redirect(url_for('auth.login'))  # Redirigir al login
-    user_files = get_user_files(JSON_FILE_PATH)  # Obtener archivos del usuario
+        flash('Please log in to access this page.', 'error')
+        return redirect(url_for('auth.login'))
+    user_files = get_user_files(JSON_FILE_PATH)
     return render_template('upload.html', files=user_files, username=session['username'])
 
 # Subir un archivo y cifrarlo
 @app.post('/upload')
 def upload_file():
     if 'username' not in session:
-        return jsonify({'error': 'Not authenticated'}), 401  # Error si no está autenticado
+        return jsonify({'error': 'Not authenticated'}), 401
 
     file = request.files.get('file')
     if not file or not allowed_file(file.filename):
-        return jsonify({'error': 'Invalid file or type'}), 400  # Error si no hay archivo o el tipo no es permitido
+        return jsonify({'error': 'Invalid file or type'}), 400
 
     user, err_response, status = get_authenticated_user()
     if err_response:
-        return err_response, status  # Manejo de error si no se puede autenticar al usuario
+        return err_response, status
 
-    cert_err = validate_user_certificate(user)
+    cert_err = validate_certificate(user)
     if cert_err:
-        return cert_err  # Manejo de error si el certificado del usuario no es válido
+        return cert_err
 
     try:
-        # Guardar el archivo subido de manera segura
         filename = secure_filename(file.filename)
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], f"user_{user.id}_{filename}")
         file.save(file_path)
 
-        # Realizar la encapsulación para generar la clave compartida
         public_key = bytes.fromhex(user.public_key_kyber)
         shared_key, ciphertext = kyber.encaps(public_key)
 
-        # Cifrar el archivo usando la clave compartida
         encrypted_file_path = encrypt_file(file_path, shared_key)
-        os.remove(file_path)  # Eliminar el archivo original después de cifrarlo
+        os.remove(file_path)
 
-        # Guardar la información del archivo cifrado en el archivo JSON
         files_data = load_json(JSON_FILE_PATH)
         files_data['files'].append({
             "name": filename,
@@ -208,60 +320,85 @@ def upload_file():
 
     except Exception as e:
         logger.error(f"Error al encriptar el archivo: {str(e)}")
-        return jsonify({'error': str(e)}), 500  # Manejo de error general
+        return jsonify({'error': str(e)}), 500
 
 # Descargar un archivo y descifrarlo
 @app.post('/download')
 def download_file():
-    # Autenticación del usuario
+    path = request.form.get('path')
+    if not path or not os.path.exists(path):
+        return jsonify({'error': 'File not found'}), 404
+
+    is_community_file = "community_" in path
+    temp_decrypted = None
+
     user, err_response, status = get_authenticated_user()
     if err_response:
         return err_response, status
 
-    # Obtener la ruta del archivo a descargar
-    path = request.form.get('path')
-    if not path or not os.path.exists(path):
-        return jsonify({'error': 'File not found'}), 404  # Error si el archivo no existe
-
-    # Solicitar la contraseña del usuario para descifrar la clave privada
-    password = request.form.get('password') or request.args.get('password')
-    if not password:
-        logger.error("La contraseña es requerida para descifrar la clave privada.")
-        return jsonify({'error': 'Password is required'}), 400  # Error si no se proporciona la contraseña
-
-    temp_decrypted = None
     try:
-        # Obtener la información del archivo desde el JSON
-        files_data = load_json(JSON_FILE_PATH)
-        file_info = next((f for f in files_data['files'] if f['path'] == path and f['user_id'] == user.id), None)
-        if not file_info:
-            return jsonify({'error': 'File information not found'}), 404  # Error si no se encuentra la información del archivo
+        if not is_community_file:
+            password = request.form.get('password') or request.args.get('password')
+            if not password:
+                logger.error("La contraseña es requerida para descifrar la clave privada.")
+                return jsonify({'error': 'Password is required'}), 400
 
-        # Descifrar la clave privada del usuario usando la contraseña
-        private_key_encrypted = b64decode(user.private_key_kyber)
-        iv, salt, ciphertext = private_key_encrypted[:16], private_key_encrypted[16:16 + SALT_LENGTH], private_key_encrypted[16 + SALT_LENGTH:]
-        derived_key = scrypt(password.encode('utf-8'), salt, KEY_LENGTH, N=SCRYPT_N, r=SCRYPT_R, p=SCRYPT_P)
-        cipher = AES.new(derived_key, AES.MODE_CBC, iv)
-        private_key = unpad(cipher.decrypt(ciphertext), AES.block_size)
+            files_data = load_json(JSON_FILE_PATH)
+            file_info = next((f for f in files_data['files'] if f['path'] == path and f['user_id'] == user.id), None)
+            if not file_info:
+                return jsonify({'error': 'File information not found'}), 404
 
-        # Usar la clave privada para recuperar la clave compartida y descifrar el archivo
-        shared_key = kyber.decaps(private_key, bytes.fromhex(file_info['ciphertext']))
-        temp_decrypted = decrypt_file(path, shared_key)
+            private_key_encrypted = b64decode(user.private_key_kyber)
+            iv, salt, ciphertext = private_key_encrypted[:16], private_key_encrypted[16:16 + SALT_LENGTH], private_key_encrypted[16 + SALT_LENGTH:]
+            derived_key = scrypt(password.encode('utf-8'), salt, KEY_LENGTH, N=SCRYPT_N, r=SCRYPT_R, p=SCRYPT_P)
+            cipher = AES.new(derived_key, AES.MODE_CBC, iv)
+            private_key = unpad(cipher.decrypt(ciphertext), AES.block_size)
 
-        logger.info(f"Archivo {file_info['name']} desencriptado correctamente para el usuario {user.username}")
-        return send_file(temp_decrypted, as_attachment=True, download_name=os.path.basename(path).replace('_encrypted', ''))
+            shared_key = kyber.decaps(private_key, bytes.fromhex(file_info['ciphertext']))
+            temp_decrypted = decrypt_file(path, shared_key)
+
+            logger.info(f"Archivo {file_info['name']} desencriptado correctamente para el usuario {user.username}")
+            return send_file(temp_decrypted, as_attachment=True, download_name=os.path.basename(path).replace('_encrypted', ''))
+
+        else:
+            json_filename = f"community_{path.split('_')[1]}_files.json"
+            community_files_data = load_json(json_filename)
+            file_info = next((f for f in community_files_data['files'] if f['path'] == path), None)
+            if not file_info:
+                return jsonify({'error': 'Community file information not found'}), 404
+
+            encrypted_keys = file_info.get("encrypted_aes_keys", {})
+            encrypted_aes_key = encrypted_keys.get(str(user.id))
+
+            if not encrypted_aes_key:
+                return jsonify({'error': 'User does not have access to this file'}), 403
+
+            try:
+                aes_key = decrypt_aes_key_with_kyber(encrypted_aes_key, user.private_key_kyber)
+            except Exception as e:
+                logger.error(f"Error durante el descifrado de la clave AES para el archivo comunitario: {str(e)}")
+                return jsonify({'error': 'Decryption of AES key failed'}), 400
+
+            try:
+                temp_decrypted = decrypt_file(path, aes_key)
+            except Exception as e:
+                logger.error(f"Error durante el descifrado del archivo comunitario: {str(e)}")
+                return jsonify({'error': 'Decryption of file failed'}), 400
+
+            logger.info(f"Archivo comunitario {file_info['name']} desencriptado correctamente para el usuario {user.username}")
+            return send_file(temp_decrypted, as_attachment=True, download_name=os.path.basename(path).replace('_encrypted', ''))
 
     except (ValueError, KeyError) as e:
-        logger.error(f"Error durante la descifrado: {str(e)}")
-        return jsonify({'error': 'Incorrect password or decryption failed'}), 400  # Error si la contraseña es incorrecta o falla el descifrado
+        logger.error(f"Error durante el descifrado: {str(e)}")
+        return jsonify({'error': 'Incorrect password or decryption failed'}), 400
 
     except Exception as e:
         logger.error(f"Error durante la descarga del archivo: {str(e)}")
-        return jsonify({'error': f'Decryption failed: {str(e)}'}), 400  # Manejo de error general
+        return jsonify({'error': f'Decryption failed: {str(e)}'}), 400
 
     finally:
         if temp_decrypted and os.path.exists(temp_decrypted):
-            os.remove(temp_decrypted)  # Eliminar el archivo temporal desencriptado
+            os.remove(temp_decrypted)
 
 if __name__ == '__main__':
-    app.run(debug=True)  # Ejecutar la aplicación Flask en modo debug
+    app.run(debug=True)

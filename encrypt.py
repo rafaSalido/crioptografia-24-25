@@ -4,7 +4,6 @@ from typing import Optional, Tuple
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
 from Crypto.Protocol.KDF import scrypt
-from Crypto.Util import Padding
 from Crypto.Util.Padding import pad, unpad
 from base64 import b64encode, b64decode
 from dotenv import load_dotenv
@@ -35,7 +34,8 @@ def encrypt_aes_key_with_kyber(aes_key: bytes, public_key_hex: str) -> str:
     """
     kyber = Kyber512
     public_key = bytes.fromhex(public_key_hex)
-    _, ciphertext = kyber.encaps(public_key)  # Encapsulación para generar ciphertext
+    shared_key, ciphertext = kyber.encaps(public_key)  # Encapsulación para generar ciphertext
+    logger.debug(f"Clave AES cifrada correctamente con la clave pública Kyber512. Shared key: {shared_key.hex()}")
     return b64encode(ciphertext).decode('utf-8')  # Retornar el ciphertext en base64
 
 def decrypt_aes_key_with_kyber(ciphertext_b64: str, private_key_hex: str) -> bytes:
@@ -47,8 +47,13 @@ def decrypt_aes_key_with_kyber(ciphertext_b64: str, private_key_hex: str) -> byt
     ciphertext = b64decode(ciphertext_b64)
 
     # Recuperar la clave compartida
-    shared_key = kyber.decaps(private_key, ciphertext)
-    return shared_key  # Retornar la clave compartida recuperada
+    try:
+        shared_key = kyber.decaps(private_key, ciphertext)
+        logger.debug("Clave AES descifrada correctamente con la clave privada Kyber512.")
+        return shared_key  # Retornar la clave compartida recuperada
+    except Exception as e:
+        logger.error(f"Error durante la decapsulación con Kyber512: {str(e)}")
+        raise EncryptionError("Failed to decrypt the AES key using Kyber512")
 
 ### SECCIÓN 1: Encriptación de Archivos del Usuario ###
 
@@ -65,7 +70,7 @@ class AESCipher:
         """
         iv = get_random_bytes(IV_LENGTH)  # Generar un IV aleatorio
         cipher = AES.new(self.key, AES.MODE_CBC, iv)  # Inicializar cifrador AES con la clave y el IV
-        padded_data = Padding.pad(data, AES.block_size)  # Rellenar los datos para que sean múltiplos del tamaño de bloque
+        padded_data = pad(data, AES.block_size)  # Rellenar los datos para que sean múltiplos del tamaño de bloque
         return iv, cipher.encrypt(padded_data)  # Retornar IV y el ciphertext cifrado
 
     def decrypt(self, iv: bytes, ciphertext: bytes) -> bytes:
@@ -74,7 +79,7 @@ class AESCipher:
         """
         cipher = AES.new(self.key, AES.MODE_CBC, iv)  # Inicializar cifrador AES con la clave y el IV
         decrypted_data = cipher.decrypt(ciphertext)  # Descifrar los datos
-        return Padding.unpad(decrypted_data, AES.block_size)  # Retornar los datos descifrados después de eliminar el padding
+        return unpad(decrypted_data, AES.block_size)  # Retornar los datos descifrados después de eliminar el padding
 
 def encrypt_file(file_path: str, aes_key: bytes) -> Optional[str]:
     """
@@ -170,23 +175,22 @@ def get_decrypted_filename(file_path: str) -> str:
     base, ext = os.path.splitext(file_path)
     return f"{base}_decrypted{ext}"
 
-
 ### SECCIÓN 4: Encriptado/Desencriptado de clave privada de usuario ###
 
 def encrypt_with_master_key(data: bytes, master_key: bytes) -> str:
     """
     Cifra los datos con la clave maestra utilizando AES en modo CBC.
     """
-    cipher = AES.new(master_key, AES.MODE_CBC)
+    iv = os.urandom(IV_LENGTH)  # Genera un IV aleatorio.
+    cipher = AES.new(master_key, AES.MODE_CBC, iv)
     ciphertext = cipher.encrypt(pad(data, AES.block_size))
-    return b64encode(cipher.iv + ciphertext).decode('utf-8')
+    return b64encode(iv + ciphertext).decode('utf-8')
 
 def decrypt_with_master_key(encrypted_data: str, master_key: bytes) -> bytes:
     """
     Descifra los datos cifrados con la clave maestra utilizando AES en modo CBC.
     """
     encrypted_data = b64decode(encrypted_data)
-    iv, ciphertext = encrypted_data[:16], encrypted_data[16:]
+    iv, ciphertext = encrypted_data[:IV_LENGTH], encrypted_data[IV_LENGTH:]
     cipher = AES.new(master_key, AES.MODE_CBC, iv)
     return unpad(cipher.decrypt(ciphertext), AES.block_size)
-

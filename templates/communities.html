@@ -1,7 +1,7 @@
 {% extends 'app_base.html' %}
 
 {% block content %}
-<h2 class="mb-10 text-2xl text-center">Communities</b></h2>
+<h2 class="mb-10 text-2xl text-center">Communities</h2>
 <div>
     <section class="flex flex-col md:flex-row gap-8">
         <div class="w-full md:w-1/4 bg-white p-6 rounded-lg shadow">
@@ -13,7 +13,7 @@
                 </label>
                 <label for="password" class="w-full">
                     <p class="mt-4">Password:</p>
-                    <input type="password" id="password" name="password" class="border border-gray-300 p-2 rounded w-full" required>
+                    <input type="password" id="password" name="password" class="border border-gray-300 p-2 rounded w-full" required placeholder="Enter a strong password">
                 </label>
                 <button class="w-full mt-4 bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
                     Create Community
@@ -22,7 +22,6 @@
         </div>
         <div class="w-full md:w-3/4 bg-white p-6 rounded-lg shadow">
             <h3 class="text-xl font-semibold mb-4">Current Communities</h3>
-            
             <div class="text-center flex flex-wrap gap-2">
                 {% for community in user_communities %}
                     <div class="p-2">
@@ -38,11 +37,18 @@
     <section class="mt-8 bg-white p-6 rounded-lg shadow mb-10">
         <h3 class="text-xl font-semibold mb-4 text-center">Other Communities</h3>
         <section id="encryptedFileList" class="flex flex-wrap gap-2 justify-start">
-            {% for community in communities %}
+            {% for community in other_communities %}
                 <div class="p-2">
-                    <a href="/community/{{ community.id }}" class="bg-blue-100 px-4 py-2 rounded cursor-pointer hover:bg-blue-200">
-                        {{ community.name }}
-                    </a>
+                    <div class="flex items-center">
+                        <a href="/community/{{ community.id }}" class="bg-blue-100 px-4 py-2 rounded cursor-pointer hover:bg-blue-200 mr-2">
+                            {{ community.name }}
+                        </a>
+                        <form action="/join-community/{{ community.id }}" method="POST">
+                            <button class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
+                                Join
+                            </button>
+                        </form>
+                    </div>
                 </div>
             {% endfor %}
         </section>
