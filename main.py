@@ -242,9 +242,16 @@ def upload_to_community(community_id):
         members = CommunityUser.query.filter_by(community_id=community_id).all()
         for member in members:
             member_user = User.query.get(member.user_id)
-            public_key = bytes.fromhex(member_user.public_key_kyber)
-            encrypted_key = encrypt_aes_key_with_kyber(aes_key, public_key.hex())
-            encrypted_keys[str(member.user_id)] = encrypted_key
+            if not member_user.public_key_kyber:
+                logger.error(f"Usuario {member_user.id} no tiene una clave pública configurada.")
+                continue  # Saltar usuarios sin clave pública
+
+            try:
+                public_key = bytes.fromhex(member_user.public_key_kyber)
+                encrypted_key = encrypt_aes_key_with_kyber(aes_key, public_key.hex())
+                encrypted_keys[str(member_user.id)] = encrypted_key
+            except ValueError as e:
+                logger.error(f"Error al procesar la clave pública del usuario {member_user.id}: {str(e)}")
 
         json_filename = f"community_{community_id}_files.json"
         community_files_data = load_json(json_filename)
@@ -371,7 +378,14 @@ def download_file():
             encrypted_aes_key = encrypted_keys.get(str(user.id))
 
             if not encrypted_aes_key:
+                logger.error(f"El usuario {user.id} no tiene una clave AES asignada para este archivo.")
                 return jsonify({'error': 'User does not have access to this file'}), 403
+
+            try:
+                aes_key = decrypt_aes_key_with_kyber(encrypted_aes_key, user.private_key_kyber)
+            except ValueError as e:
+                logger.error(f"Error al descifrar la clave AES del archivo para el usuario {user.id}: {str(e)}")
+                return jsonify({'error': 'Decryption of AES key failed'}), 400
 
             try:
                 aes_key = decrypt_aes_key_with_kyber(encrypted_aes_key, user.private_key_kyber)
