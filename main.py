@@ -1,4 +1,4 @@
-from base64 import b64decode
+import base64
 import json
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, send_file
 import os
@@ -132,6 +132,7 @@ def create_community():
         flash(f"Error al crear la comunidad: {str(e)}", 'error')
         return redirect(url_for('communities_page'))
 
+
 @app.post('/join-community/<int:community_id>')
 def join_community(community_id):
     if 'username' not in session:
@@ -165,7 +166,7 @@ def join_community(community_id):
             encrypted_keys = file_info.get("encrypted_aes_keys", {})
             if str(user.id) not in encrypted_keys:
                 public_key = bytes.fromhex(user.public_key_kyber)
-                aes_key = b64decode(encrypted_keys[next(iter(encrypted_keys))])
+                aes_key = base64.b64decode(encrypted_keys[next(iter(encrypted_keys))])
                 encrypted_key_for_new_member = encrypt_aes_key_with_kyber(aes_key, public_key.hex())
                 encrypted_keys[str(user.id)] = encrypted_key_for_new_member
                 file_info["encrypted_aes_keys"] = encrypted_keys
@@ -238,6 +239,7 @@ def upload_to_community(community_id):
         encrypted_file_path = encrypt_file(file_path, aes_key)
         os.remove(file_path)
 
+        """ 
         encrypted_keys = {}
         members = CommunityUser.query.filter_by(community_id=community_id).all()
         for member in members:
@@ -252,14 +254,19 @@ def upload_to_community(community_id):
                 encrypted_keys[str(member_user.id)] = encrypted_key
             except ValueError as e:
                 logger.error(f"Error al procesar la clave pública del usuario {member_user.id}: {str(e)}")
-
+        """
+        
         json_filename = f"community_{community_id}_files.json"
+        public_key = bytes.fromhex(user.public_key_kyber)
+        encrypted_key = encrypt_aes_key_with_kyber(aes_key, public_key.hex())
         community_files_data = load_json(json_filename)
 
         community_files_data.setdefault("files", []).append({
             "name": filename,
             "path": encrypted_file_path,
-            "encrypted_aes_keys": encrypted_keys
+            "encrypted_aes_key": encrypted_key,
+            "user_public_key": public_key.hex(),
+            "aes_key": aes_key.hex()
         })
 
         save_json(community_files_data, json_filename)
@@ -270,6 +277,71 @@ def upload_to_community(community_id):
     except Exception as e:
         logger.error(f"Error al encriptar el archivo: {str(e)}")
         return jsonify({'error': str(e)}), 500
+    
+
+
+
+# Descargar un archivo y descifrarlo
+@app.post('/community/<int:community_id>/download')
+def download_community_file(community_id: int):
+    path = request.form.get('path')
+    if not path or not os.path.exists(path):
+        return jsonify({'error': 'File not found'}), 404
+
+    temp_decrypted = None
+
+    community = Community.query.get(community_id)
+
+    user, err_response, status = get_authenticated_user()
+    if err_response:
+        return err_response, status
+
+    try:
+        json_filename = f"community_{path.split('_')[1]}_files.json"
+        community_files_data = load_json(json_filename)
+        file_info = next((f for f in community_files_data['files'] if f['path'] == path), None)
+        if not file_info:
+            return jsonify({'error': 'Community file information not found'}), 404
+
+        encrypted_aes_key = file_info.get("encrypted_aes_key", None)
+        aes_key = file_info.get("aes_key", None)
+        user_public_key = file_info.get("user_public_key", None)
+
+        if not encrypted_aes_key:
+            logger.error(f"El usuario {user.id} no tiene una clave AES asignada para este archivo.")
+            return jsonify({'error': 'User does not have access to this file'}), 403
+
+        try:
+            print("Encrypted aes key:", encrypted_aes_key)
+            print("User public key: ", user_public_key)
+            print("Aes key: ", aes_key)
+            #aes_key = decrypt_aes_key_with_kyber(encrypted_aes_key, user_public_key)
+        except ValueError as e:
+            logger.error(f"Error al descifrar la clave AES del archivo para el usuario {user.id}: {str(e)}")
+            return jsonify({'error': 'Decryption of AES key failed'}), 400
+
+        try:
+            aes_key = bytes.fromhex(aes_key)
+            temp_decrypted = decrypt_file(path, aes_key)
+        except Exception as e:
+            logger.error(f"Error durante el descifrado del archivo comunitario: {str(e)}")
+            return jsonify({'error': 'Decryption of file failed'}), 400
+
+        logger.info(f"Archivo comunitario {file_info['name']} desencriptado correctamente para el usuario {user.username}")
+        return send_file(temp_decrypted, as_attachment=True, download_name=os.path.basename(path).replace('_encrypted', ''))
+
+    except (ValueError, KeyError) as e:
+        logger.error(f"Error durante el descifrado: {str(e)}")
+        return jsonify({'error': 'Incorrect password or decryption failed'}), 400
+
+    except Exception as e:
+        logger.error(f"Error durante la descarga del archivo: {str(e)}")
+        return jsonify({'error': f'Decryption failed: {str(e)}'}), 400
+
+    finally:
+        if temp_decrypted and os.path.exists(temp_decrypted):
+            os.remove(temp_decrypted)
+
 
 '''
     UPLOAD FEATURE URLS
@@ -336,7 +408,6 @@ def download_file():
     if not path or not os.path.exists(path):
         return jsonify({'error': 'File not found'}), 404
 
-    is_community_file = "community_" in path
     temp_decrypted = None
 
     user, err_response, status = get_authenticated_user()
@@ -344,63 +415,28 @@ def download_file():
         return err_response, status
 
     try:
-        if not is_community_file:
-            password = request.form.get('password') or request.args.get('password')
-            if not password:
-                logger.error("La contraseña es requerida para descifrar la clave privada.")
-                return jsonify({'error': 'Password is required'}), 400
+        password = request.form.get('password') or request.args.get('password')
+        if not password:
+            logger.error("La contraseña es requerida para descifrar la clave privada.")
+            return jsonify({'error': 'Password is required'}), 400
 
-            files_data = load_json(JSON_FILE_PATH)
-            file_info = next((f for f in files_data['files'] if f['path'] == path and f['user_id'] == user.id), None)
-            if not file_info:
-                return jsonify({'error': 'File information not found'}), 404
+        files_data = load_json(JSON_FILE_PATH)
+        file_info = next((f for f in files_data['files'] if f['path'] == path and f['user_id'] == user.id), None)
+        if not file_info:
+            return jsonify({'error': 'File information not found'}), 404
 
-            private_key_encrypted = b64decode(user.private_key_kyber)
-            iv, salt, ciphertext = private_key_encrypted[:16], private_key_encrypted[16:16 + SALT_LENGTH], private_key_encrypted[16 + SALT_LENGTH:]
-            derived_key = scrypt(password.encode('utf-8'), salt, KEY_LENGTH, N=SCRYPT_N, r=SCRYPT_R, p=SCRYPT_P)
-            cipher = AES.new(derived_key, AES.MODE_CBC, iv)
-            private_key = unpad(cipher.decrypt(ciphertext), AES.block_size)
+        private_key_encrypted = base64.b64decode(user.private_key_kyber)
+        iv, salt, ciphertext = private_key_encrypted[:16], private_key_encrypted[16:16 + SALT_LENGTH], private_key_encrypted[16 + SALT_LENGTH:]
+        derived_key = scrypt(password.encode('utf-8'), salt, KEY_LENGTH, N=SCRYPT_N, r=SCRYPT_R, p=SCRYPT_P)
+        cipher = AES.new(derived_key, AES.MODE_CBC, iv)
+        private_key = unpad(cipher.decrypt(ciphertext), AES.block_size)
 
-            shared_key = kyber.decaps(private_key, bytes.fromhex(file_info['ciphertext']))
-            temp_decrypted = decrypt_file(path, shared_key)
+        shared_key = kyber.decaps(private_key, bytes.fromhex(file_info['ciphertext']))
+        temp_decrypted = decrypt_file(path, shared_key)
 
-            logger.info(f"Archivo {file_info['name']} desencriptado correctamente para el usuario {user.username}")
-            return send_file(temp_decrypted, as_attachment=True, download_name=os.path.basename(path).replace('_encrypted', ''))
+        logger.info(f"Archivo {file_info['name']} desencriptado correctamente para el usuario {user.username}")
+        return send_file(temp_decrypted, as_attachment=True, download_name=os.path.basename(path).replace('_encrypted', ''))
 
-        else:
-            json_filename = f"community_{path.split('_')[1]}_files.json"
-            community_files_data = load_json(json_filename)
-            file_info = next((f for f in community_files_data['files'] if f['path'] == path), None)
-            if not file_info:
-                return jsonify({'error': 'Community file information not found'}), 404
-
-            encrypted_keys = file_info.get("encrypted_aes_keys", {})
-            encrypted_aes_key = encrypted_keys.get(str(user.id))
-
-            if not encrypted_aes_key:
-                logger.error(f"El usuario {user.id} no tiene una clave AES asignada para este archivo.")
-                return jsonify({'error': 'User does not have access to this file'}), 403
-
-            try:
-                aes_key = decrypt_aes_key_with_kyber(encrypted_aes_key, user.private_key_kyber)
-            except ValueError as e:
-                logger.error(f"Error al descifrar la clave AES del archivo para el usuario {user.id}: {str(e)}")
-                return jsonify({'error': 'Decryption of AES key failed'}), 400
-
-            try:
-                aes_key = decrypt_aes_key_with_kyber(encrypted_aes_key, user.private_key_kyber)
-            except Exception as e:
-                logger.error(f"Error durante el descifrado de la clave AES para el archivo comunitario: {str(e)}")
-                return jsonify({'error': 'Decryption of AES key failed'}), 400
-
-            try:
-                temp_decrypted = decrypt_file(path, aes_key)
-            except Exception as e:
-                logger.error(f"Error durante el descifrado del archivo comunitario: {str(e)}")
-                return jsonify({'error': 'Decryption of file failed'}), 400
-
-            logger.info(f"Archivo comunitario {file_info['name']} desencriptado correctamente para el usuario {user.username}")
-            return send_file(temp_decrypted, as_attachment=True, download_name=os.path.basename(path).replace('_encrypted', ''))
 
     except (ValueError, KeyError) as e:
         logger.error(f"Error durante el descifrado: {str(e)}")

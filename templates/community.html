@@ -11,7 +11,7 @@
             {% endif %}
             {% for file in files %}
             <article class="flex flex-col bg-white p-4 border border-gray-300 rounded-lg shadow-md text-gray-600 max-w-md">
-                <form method="post" action="/download" class="space-y-2 flex flex-col">
+                <form method="post" action="/community/{{ community.id }}/download" class="space-y-2 flex flex-col">
                     <!-- Asegurarse de usar el campo correcto para la ruta del archivo -->
                     <input name="path" id="path_{{ loop.index }}" type="hidden" value="{{ file.path }}">
                     <p class="text-sm font-normal">Name: {{ file.name }}</p>
