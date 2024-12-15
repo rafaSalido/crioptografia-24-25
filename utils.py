@@ -1,7 +1,8 @@
-from flask import session
+from flask import jsonify, session
 import json
 import os
 import logging
+from auth.models import User
 from encrypt import MasterCipher  # Importar clase de encriptación
 from json.decoder import JSONDecodeError
 
@@ -13,6 +14,19 @@ logger = logging.getLogger(__name__)
 cipher = MasterCipher()
 
 ALLOWED_EXTENSIONS = {'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'zip', 'tar', 'gz'}
+
+
+# Obtener el usuario autenticado desde la sesión
+def get_authenticated_user():
+    user_id = session.get('user_id')
+    if not user_id:
+        return None, jsonify({'error': 'Not authenticated'}), 401  # Error si el usuario no está autenticado
+    user = User.query.get(user_id)
+    if not user:
+        logger.error("Usuario no encontrado en la base de datos")
+        return None, jsonify({'error': 'User not found'}), 404  # Error si el usuario no está en la base de datos
+    return user, None, None
+
 
 def get_user_files(json_record_path, community_id=None):
     """

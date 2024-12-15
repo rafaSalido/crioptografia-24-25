@@ -78,12 +78,7 @@ def signup():
             return render_template('signup.html')
 
         # Crear certificado para el usuario
-        try:
-            certificate = generate_certificate(username, public_key.hex())
-        except Exception as e:
-            logger.error(f"Error al generar el certificado para el usuario {username}: {e}")
-            flash(f"Error al generar el certificado: {str(e)}", 'error')
-            return render_template('signup.html')
+        certificate = generate_certificate(username, public_key.hex())
 
         # Crear el nuevo usuario
         new_user = User(
