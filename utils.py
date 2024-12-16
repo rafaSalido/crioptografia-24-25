@@ -1,8 +1,7 @@
-from flask import jsonify, session
+from flask import session
 import json
 import os
 import logging
-from auth.models import User
 from encrypt import MasterCipher  # Importar clase de encriptación
 from json.decoder import JSONDecodeError
 
@@ -15,39 +14,27 @@ cipher = MasterCipher()
 
 ALLOWED_EXTENSIONS = {'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'zip', 'tar', 'gz'}
 
-
-# Obtener el usuario autenticado desde la sesión
-def get_authenticated_user():
-    user_id = session.get('user_id')
-    if not user_id:
-        return None, jsonify({'error': 'Not authenticated'}), 401  # Error si el usuario no está autenticado
-    user = User.query.get(user_id)
-    if not user:
-        logger.error("Usuario no encontrado en la base de datos")
-        return None, jsonify({'error': 'User not found'}), 404  # Error si el usuario no está en la base de datos
-    return user, None, None
-
-
-def get_user_files(json_record_path, community_id=None):
+def get_user_files(json_record_path, user_id=None, is_private=False):
     """
-    Obtiene la lista de archivos asociados con el usuario actual o con una comunidad.
-    
+    Obtiene la lista de archivos asociados al usuario actual o a una comunidad específica.
+
     :param json_record_path: Ruta al archivo JSON con los registros de archivos.
-    :param community_id: ID de la comunidad para filtrar archivos (opcional).
-    :return: Lista de archivos del usuario o de la comunidad.
+    :param user_id: ID del usuario para filtrar archivos. Si es None, retorna todos los archivos.
+    :return: Lista de archivos.
     """
-    user_id = session.get('user_id')
-    if not user_id:
-        return []
-
+    # Cargar los datos del JSON
     files_json = load_json(json_record_path)
+    
+    if is_private:
+        # Filtrar archivos privados del usuario actual
+        return [
+            file for file in files_json.get("files", [])
+            if file.get("user_id") == user_id
+        ]
 
-    if community_id:
-        # Filtrar archivos por el community_id proporcionado
-        return [file for file in files_json.get("files", []) if file.get("community_id") == community_id]
-    else:
-        # Filtrar archivos del usuario actual
-        return [file for file in files_json.get("files", []) if file.get("user_id") == user_id]
+    # Si no es privado, retornar todos los archivos
+    return files_json.get("files", [])
+
 
 def allowed_file(filename):
     """

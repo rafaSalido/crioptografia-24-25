@@ -40,19 +40,43 @@
             {% for community in other_communities %}
                 <div class="p-2">
                     <div class="flex items-center">
-                        <a href="/community/{{ community.id }}" class="bg-blue-100 px-4 py-2 rounded cursor-pointer hover:bg-blue-200 mr-2">
+                        <a class="bg-blue-100 px-4 py-2 rounded">
                             {{ community.name }}
                         </a>
-                        <form action="/join-community/{{ community.id }}" method="POST">
-                            <button class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
-                                Join
-                            </button>
-                        </form>
+                        <button 
+                            class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
+                            onclick="promptJoin('{{ community.id }}', '{{ community.name }}')">
+                            Join
+                        </button>
                     </div>
                 </div>
             {% endfor %}
         </section>
     </section>
+    
+    <script>
+        function promptJoin(communityId, communityName) {
+            const password = prompt(`Enter the password for the community "${communityName}"`);
+            if (password) {
+                // Crear un formulario dinámico para enviar los datos al servidor
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = `/join-community/${communityId}`;
+                
+                // Crear el campo de contraseña
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'password';
+                input.value = password;
+                form.appendChild(input);
+                
+                // Adjuntar y enviar el formulario
+                document.body.appendChild(form);
+                form.submit();
+            }
+        }
+    </script>
+    
 </div>
 
 {% endblock %}

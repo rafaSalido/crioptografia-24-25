@@ -19,6 +19,8 @@ class Community(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(150), unique=True, nullable=False)
     password = db.Column(db.String(150), nullable=False)
+    public_key_kyber = db.Column(db.Text, nullable=False)  # Clave pública Kyber512
+    private_key_kyber = db.Column(db.Text, nullable=False)  # Clave privada Kyber512
     certificate_path = db.Column(db.String(250), nullable=True)  # Guardar la ruta del certificado
 
     def add_user(self, user_id):

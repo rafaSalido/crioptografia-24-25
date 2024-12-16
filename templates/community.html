@@ -12,9 +12,11 @@
             {% for file in files %}
             <article class="flex flex-col bg-white p-4 border border-gray-300 rounded-lg shadow-md text-gray-600 max-w-md">
                 <form method="post" action="/community/{{ community.id }}/download" class="space-y-2 flex flex-col">
-                    <!-- Asegurarse de usar el campo correcto para la ruta del archivo -->
-                    <input name="path" id="path_{{ loop.index }}" type="hidden" value="{{ file.path }}">
+                    <input type="hidden" name="file_id" value="{{ file.file_id }}"> <!-- Añade este campo -->
                     <p class="text-sm font-normal">Name: {{ file.name }}</p>
+                
+                    <label for="password_{{ file.file_id }}" class="text-sm font-normal">Enter community password:</label>
+                    <input type="password" name="password" id="password_{{ file.file_id }}" class="border border-gray-300 p-2 rounded" required>
                 
                     <input type="submit" value="Download" class="bg-blue-500 text-white px-4 py-2 rounded cursor-pointer hover:bg-blue-600">
                 </form>
@@ -116,39 +118,39 @@
     }
 
     async function uploadFiles() {
-        if (selectedFiles.length === 0) {
-            alert('Please select a file first');
-            return;
-        }
-
-        for (const file of selectedFiles) {
-            const formData = new FormData();
-            formData.append('file', file);
-
-            try {
-                // Cambiar la URL para apuntar a /upload-to-community
-                const response = await fetch(`/upload-to-community/{{ community.id }}`, {
-                    method: 'POST',
-                    body: formData
-                });
-
-                if (response.ok) {
-                    const result = await response.json();
-                    alert(result.message);
-                } else {
-                    const error = await response.json();
-                    alert(error.error || 'Upload failed');
-                }
-            } catch (error) {
-                alert('Error uploading file: ' + error.message);
-            }
-        }
-
-        selectedFiles = [];
-        fileInput.value = '';
-        uploadControls.style.display = 'none';
-        location.reload();  // Recargar la página para mostrar el nuevo archivo en la lista
+    if (selectedFiles.length === 0) {
+        alert('Please select a file first');
+        return;
     }
+
+    for (const file of selectedFiles) {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            const response = await fetch(`/upload-to-community/{{ community.id }}`, {
+                method: 'POST',
+                body: formData
+            });
+
+            if (response.ok) {
+                const result = await response.json(); // Intentar analizar la respuesta JSON
+                alert(result.message); // Mostrar el mensaje de éxito
+            } else {
+                const error = await response.json(); // Manejar errores devueltos como JSON
+                alert(error.error || 'Upload failed');
+            }
+        } catch (error) {
+            console.error('Error uploading file:', error.message); // Mostrar errores de red
+            alert('An unexpected error occurred. Please try again.');
+        }
+    }
+
+    selectedFiles = [];
+    fileInput.value = '';
+    uploadControls.style.display = 'none';
+    location.reload(); // Recargar la página para mostrar el nuevo archivo en la lista
+}
 </script>
 
 {% endblock %}
